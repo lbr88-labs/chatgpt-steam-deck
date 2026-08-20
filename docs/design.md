@@ -22,10 +22,11 @@ failure so errors are readable.
 
 ## Architecture
 
-The `.desktop` file is a small bootstrapper. It downloads `installer.sh` to a
-temporary directory and executes it. The helper downloads a source archive of
-`ilysenko/codex-desktop-linux`, rather than asking the user to install or use
-Git directly.
+The `.desktop` file is a small bootstrapper. It downloads `installer.sh` over
+HTTPS into a user-owned cache directory, executes it with terminal input still
+attached, and keeps the terminal open for readable results. The helper downloads
+a source archive of `ilysenko/codex-desktop-linux`, rather than asking the user
+to install or use Git directly.
 
 The upstream project remains responsible for resolving and verifying OpenAI's
 signed stable Linux package, preserving the official application payload, and

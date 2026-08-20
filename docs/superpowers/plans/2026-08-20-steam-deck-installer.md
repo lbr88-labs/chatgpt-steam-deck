@@ -4,7 +4,7 @@
 
 **Goal:** Publish a double-clickable Steam Deck launcher that installs, updates, or removes ChatGPT Community without requiring users to run Git commands.
 
-**Architecture:** A small `.desktop` bootstrap downloads this repository's helper script over HTTPS into a temporary directory. The helper presents a terminal menu, downloads an upstream source archive, delegates verified package handling to `codex-desktop-linux`, and guarantees SteamOS read-only restoration after privileged work.
+**Architecture:** A small `.desktop` bootstrap downloads this repository's helper script over HTTPS into a user-owned cache directory and executes it with terminal input attached. The helper presents a terminal menu, downloads an upstream source archive, delegates verified package handling to `codex-desktop-linux`, and guarantees SteamOS read-only restoration after privileged work.
 
 **Tech Stack:** Bash, freedesktop desktop entry, curl, tar, pacman, SteamOS utilities
 
@@ -63,11 +63,11 @@ Run: `git add -- installer.sh tests/test-installer.sh && git commit -m "feat: ad
 
 **Interfaces:**
 - Consumes: the raw HTTPS URL for `installer.sh` on `LBR88/chatgpt-steam-deck/main`.
-- Produces: a freedesktop launcher opening Konsole and executing a temporary downloaded helper.
+- Produces: a freedesktop launcher opening a visible terminal and executing the downloaded helper.
 
 - [ ] **Step 1: Add failing desktop-entry assertions**
 
-Assert the launcher declares `Type=Application`, `Terminal=true`, the ChatGPT Community name, and an HTTPS-only bootstrap that uses `curl --fail --location --proto '=https' --tlsv1.2` and a temporary directory.
+Assert the launcher declares `Type=Application`, `Terminal=true`, the ChatGPT Community name, and an HTTPS-only bootstrap that uses `curl --fail --location --proto '=https' --tlsv1.2`.
 
 - [ ] **Step 2: Run tests to verify failure**
 
@@ -77,7 +77,7 @@ Expected: FAIL because the desktop entry does not exist.
 
 - [ ] **Step 3: Implement the launcher**
 
-Create the `.desktop` entry with a Bash `Exec` command that creates a temporary directory, installs a cleanup trap, downloads `installer.sh`, marks it executable, and runs it. Keep the terminal open on errors.
+Create the `.desktop` entry with a Bash `Exec` command that downloads `installer.sh` into a user-owned cache directory and executes it with stdin attached. Keep the terminal open so success or failure remains readable.
 
 - [ ] **Step 4: Validate the launcher**
 

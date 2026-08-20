@@ -60,6 +60,18 @@ test_source_urls() {
         "$(resolve_archive_url 1875dc2eaab6f9448617d18d0eda58902edf0f1a)"
 }
 
+test_progress_output_does_not_corrupt_results() {
+    local stdout_file="$TEST_TMP/info-stdout"
+    local stderr_file="$TEST_TMP/info-stderr"
+    info 'downloading source' >"$stdout_file" 2>"$stderr_file"
+    assert_file_empty 'progress messages do not contaminate function results' "$stdout_file"
+    if grep -Fq 'downloading source' "$stderr_file"; then
+        pass 'progress messages remain visible on stderr'
+    else
+        fail 'progress messages remain visible on stderr'
+    fi
+}
+
 test_unsupported_architecture() {
     local fake_uname="$TEST_TMP/uname-arm"
     printf '#!/bin/sh\nprintf %s\\n aarch64\n' >"$fake_uname"
@@ -170,19 +182,51 @@ test_desktop_launcher() {
         fi
     fi
 
-    local name terminal
+    local name terminal exec_line
     name="$(sed -n 's/^Name=//p' "$desktop_file")"
     terminal="$(sed -n 's/^Terminal=//p' "$desktop_file")"
+    exec_line="$(sed -n 's/^Exec=//p' "$desktop_file")"
     assert_eq 'desktop launcher uses the community product name' 'Install ChatGPT Community' "$name"
     assert_eq 'desktop launcher opens a visible terminal' 'true' "$terminal"
+    if [[ "$exec_line" == *'| bash'* ]]; then
+        fail 'desktop launcher preserves terminal input for the interactive menu'
+    else
+        pass 'desktop launcher preserves terminal input for the interactive menu'
+    fi
+}
+
+test_release_packaging() {
+    local package_script="$ROOT_DIR/scripts/package-release.sh"
+    local dist_dir="$TEST_TMP/release-dist"
+    local asset="$dist_dir/Install-ChatGPT-Community.desktop"
+
+    if [[ ! -x "$package_script" ]]; then
+        fail 'release packaging script exists and is executable'
+        return
+    fi
+
+    DIST_DIR="$dist_dir" "$package_script" >/dev/null
+    if [[ -x "$asset" ]]; then
+        pass 'release packaging emits an executable desktop launcher'
+    else
+        fail 'release packaging emits an executable desktop launcher'
+    fi
+
+    if desktop-file-validate "$asset"; then
+        pass 'packaged desktop launcher remains valid'
+    else
+        fail 'packaged desktop launcher remains valid'
+    fi
 }
 
 test_source_urls
+test_progress_output_does_not_corrupt_results
 test_unsupported_architecture
 test_readonly_restoration
 test_keyring_initialization
 test_uninstall_cancellation
 test_desktop_launcher
+test_release_packaging
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 ((failed == 0))

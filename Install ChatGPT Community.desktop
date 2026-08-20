@@ -5,7 +5,7 @@ Name=Install ChatGPT Community
 Comment=Install, update, or remove ChatGPT Community on Steam Deck
 Icon=system-software-install
 Terminal=true
-Exec=bash -o pipefail -c "curl --fail --location --proto =https --tlsv1.2 --retry 3 https://raw.githubusercontent.com/LBR88/chatgpt-steam-deck/main/installer.sh | bash || echo Installer-failed.; echo Press-Enter-to-close.; read -r"
+Exec=bash -c "install -d -m 700 ~/.cache/chatgpt-steam-deck; curl --fail --location --proto =https --tlsv1.2 --retry 3 --output ~/.cache/chatgpt-steam-deck/installer.sh https://raw.githubusercontent.com/LBR88/chatgpt-steam-deck/main/installer.sh && chmod 700 ~/.cache/chatgpt-steam-deck/installer.sh && ~/.cache/chatgpt-steam-deck/installer.sh || echo Installer-failed.; echo Press-Enter-to-close.; read -r"
 Categories=Utility;
 Keywords=ChatGPT;OpenAI;Steam Deck;installer;
 StartupNotify=true
