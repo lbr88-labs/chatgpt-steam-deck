@@ -7,6 +7,14 @@ commands.
 This is an independent community installer. It is not an official OpenAI
 project and it does not redistribute the ChatGPT application.
 
+## Related project
+
+After installing the app, optionally install
+**[ChatGPT Community for Decky](https://github.com/LBR88/decky-chatgpt-community)**
+to open ChatGPT, start new chats, check for updates, and control Voice Mode from
+Steam Deck's Gaming Mode Quick Access menu. This repository installs the app;
+the related Decky repository installs only the Quick Access integration.
+
 ## Install on Steam Deck
 
 1. Switch the Steam Deck to **Desktop Mode**.
