@@ -155,11 +155,34 @@ SCRIPT
     SUDO_BIN=sudo
 }
 
+test_desktop_launcher() {
+    local desktop_file="$ROOT_DIR/Install ChatGPT Community.desktop"
+    if [[ ! -f "$desktop_file" ]]; then
+        fail 'desktop launcher exists'
+        return
+    fi
+
+    if command -v desktop-file-validate >/dev/null 2>&1; then
+        if desktop-file-validate "$desktop_file"; then
+            pass 'desktop launcher is a valid freedesktop entry'
+        else
+            fail 'desktop launcher is a valid freedesktop entry'
+        fi
+    fi
+
+    local name terminal
+    name="$(sed -n 's/^Name=//p' "$desktop_file")"
+    terminal="$(sed -n 's/^Terminal=//p' "$desktop_file")"
+    assert_eq 'desktop launcher uses the community product name' 'Install ChatGPT Community' "$name"
+    assert_eq 'desktop launcher opens a visible terminal' 'true' "$terminal"
+}
+
 test_source_urls
 test_unsupported_architecture
 test_readonly_restoration
 test_keyring_initialization
 test_uninstall_cancellation
+test_desktop_launcher
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 ((failed == 0))
