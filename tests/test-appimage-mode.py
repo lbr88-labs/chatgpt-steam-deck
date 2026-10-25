@@ -27,7 +27,7 @@ class AppImageTests(unittest.TestCase):
         pacman.write_text('''#!/bin/sh
 case "$1" in
     -Qq) test -f "$TEST_BASE/registered" ;;
-    -R)
+    -R|-Rns)
         touch "$TEST_BASE/removal-attempted"
         test "${FAIL_REMOVE:-0}" = 0 || exit 1
         rm "$TEST_BASE/registered"
@@ -145,6 +145,22 @@ wait_for_app_exit
             self.assertNotEqual(result.returncode, 0)
             self.assertTrue((base / "registered").exists())
             self.assertFalse((base / "installed").exists())
+
+    def test_uninstall_action_handles_each_installation_method(self):
+        for appimage in [False, True]:
+            with self.subTest(appimage=appimage), tempfile.TemporaryDirectory() as directory:
+                base = pathlib.Path(directory)
+                self.prepare(base)
+                setup = 'publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"\n' if appimage else ''
+                result = self.run_shell(base, setup + r'''
+validate_platform() { :; }
+printf 'y\n' | uninstall_app
+test ! -e "$APPIMAGE_HOME"
+test ! -e "$APPIMAGE_DESKTOP_FILE"
+test ! -e "$TEST_BASE/registered"
+''')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((base / "profile").read_text(), "keep chats and settings")
 
     def test_native_switch_cleans_appimage_only_after_successful_install(self):
         for succeeds in [False, True]:
