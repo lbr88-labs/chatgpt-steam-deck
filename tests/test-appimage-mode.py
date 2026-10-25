@@ -107,6 +107,34 @@ test -f "$TEST_BASE/registered"
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((base / "profile").read_text(), "keep chats and settings")
 
+    def test_cleanup_waits_for_remaining_helper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            self.prepare(base)
+            result = self.run_shell(base, r'''
+publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
+cat >"$APPIMAGE_HOME/ChatGPT-Community.AppImage" <<'APP'
+#!/bin/bash
+printf '%s' "$TMPDIR" > "$TEST_BASE/runtime-path"
+touch "$TMPDIR/needed-resource"
+cat >"$TMPDIR/helper.sh" <<'HELPER'
+#!/bin/bash
+sleep 0.4
+if test -f "$TMPDIR/needed-resource"; then
+    touch "$TEST_BASE/helper-succeeded"
+else
+    touch "$TEST_BASE/helper-failed"
+fi
+HELPER
+bash "$TMPDIR/helper.sh" >/dev/null 2>&1 &
+APP
+"$APPIMAGE_HOME/launch-appimage.sh"
+test -f "$TEST_BASE/helper-succeeded"
+test ! -f "$TEST_BASE/helper-failed"
+test ! -e "$(cat "$TEST_BASE/runtime-path")"
+''')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_runtime_failure_removes_extracted_files(self):
         with tempfile.TemporaryDirectory() as directory:
             base = pathlib.Path(directory)

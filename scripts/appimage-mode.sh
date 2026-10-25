@@ -187,7 +187,15 @@ export CODEX_APPIMAGE_DESKTOP_FILE="$(cat "$app_dir/desktop-entry-path")"
 runtime_base="$HOME/.cache/chatgpt-runtime"
 mkdir -p "$runtime_base"
 runtime_tmp="$(mktemp -d "$runtime_base/run.XXXXXX")"
-trap 'rm -rf -- "$runtime_tmp"' EXIT
+cleanup_runtime() {
+    # The main process can hand off to an existing app before its zygotes and
+    # crash handlers finish. Keep their executable and resources until they exit.
+    while pgrep -u "$(id -u)" -f -- "${runtime_tmp//./\\.}/" >/dev/null; do
+        sleep 0.2
+    done
+    rm -rf -- "$runtime_tmp"
+}
+trap cleanup_runtime EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 export TMPDIR="$runtime_tmp"

@@ -56,3 +56,25 @@ removes it on exit. The initial deep test path caused Chromium's "Socket path to
 long" fatal check (test PID 130998); moving the temporary directory to a short
 home-cache path fixed it. The subsequent real startup/normal-Quit test passed and
 left no runtime directory or new core dump. There are now 8 AppImage tests.
+
+
+## October 25: helper crash after forwarding to native
+
+The real installed menu launch with the normal profile forwarded to the running
+native session, then its zygotes crashed (TRAP, missing ICU data). Merely checking
+KDE's launcher return status missed these crashes. Keeping the extraction on that
+same launch path prevented the core dumps. The wrapper deleted resources while
+helpers were still starting/exiting after their parent had returned.
+
+The wrapper now waits for processes using its unique extraction path to exit
+before deleting that directory. A regression fixture leaves a helper alive after
+its parent exits and requires it to read a resource; this fails with immediate
+cleanup and passes with the lifetime check.
+
+- [x] Ran the real installer (normal menu choice 1, no test mode or fixture).
+  Verified installed wrapper exactly matches its generated source. Launched the
+  registered AppImage menu ID with the normal profile and native still open:
+  forwarding completed, no new core dumps, no remaining extraction directory.
+  Native package and desktop-file hash remained unchanged. This checks the
+  reported forwarding crash; it does not claim a standalone normal-profile
+  session was opened while that profile was already in use by native.
