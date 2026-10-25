@@ -19,7 +19,7 @@ class AppImageTests(unittest.TestCase):
         (source / "assets/openai-codex-linux-repository-key.gpg.base64").write_text("test key")
         (source / "scripts/lib/upstream-linux-package.js").write_text("// test verifier")
         artifact = base / "candidate.AppImage"
-        artifact.write_text('#!/bin/sh\n[ "$1" = --appimage-extract-and-run ] && [ "$2" = --diagnose ]\n')
+        artifact.write_text('#!/bin/sh\n[ "$1" = --appimage-extract-and-run ] && [ "$2" = --diagnose ] || exit 1\n: "${TMPDIR:?}"\nprintf "%s" "$TMPDIR" > "$TEST_BASE/runtime-path"\nmkdir -p "$TMPDIR/appimage-extracted-test"\nexit "${APPIMAGE_TEST_FAIL:-0}"\n')
         artifact.chmod(0o755)
         (base / "registered").touch()
         (base / "profile").write_text("keep chats and settings")
@@ -52,7 +52,7 @@ fi
         return source, artifact, pacman
 
     def run_shell(self, base, command, fail=False, fail_menu=False):
-        env = dict(os.environ, TEST_BASE=str(base), TEST_ROOT=str(ROOT),
+        env = dict(os.environ, HOME=str(base), TEST_BASE=str(base), TEST_ROOT=str(ROOT),
                    FAIL_REMOVE="1" if fail else "0", FAIL_MENU_REFRESH="1" if fail_menu else "0",
                    PATH=str(base / "tools") + os.pathsep + os.environ["PATH"])
         script = r'''
@@ -88,9 +88,10 @@ appimage_is_installed
 test -x "$APPIMAGE_DESKTOP_FILE"
 test -O "$APPIMAGE_DESKTOP_FILE"
 test -O "$APPIMAGE_HOME/ChatGPT-Community.AppImage"
-grep -q 'ChatGPT-Community.AppImage' "$APPIMAGE_DESKTOP_FILE"
-grep -q -- '--appimage-extract-and-run %U' "$APPIMAGE_DESKTOP_FILE"
-grep -q 'ChatGPT-Community.AppImage' "$TEST_BASE/cached-menu"
+grep -q 'launch-appimage.sh' "$APPIMAGE_DESKTOP_FILE"
+grep -q 'launch-appimage.sh' "$TEST_BASE/cached-menu"
+test -x "$APPIMAGE_HOME/launch-appimage.sh"
+test ! -e "$(cat "$TEST_BASE/runtime-path")"
 grep -q '^Categories=Development;' "$APPIMAGE_DESKTOP_FILE"
 detect_installation_mode
 test "$INSTALLATION_MODE" = AppImage
@@ -105,6 +106,19 @@ test -f "$TEST_BASE/registered"
 ''')
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((base / "profile").read_text(), "keep chats and settings")
+
+    def test_runtime_failure_removes_extracted_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            self.prepare(base)
+            result = self.run_shell(base, r'''
+publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
+status=0
+APPIMAGE_TEST_FAIL=23 "$APPIMAGE_HOME/launch-appimage.sh" --diagnose || status=$?
+test "$status" -eq 23
+test ! -e "$(cat "$TEST_BASE/runtime-path")"
+''')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_failed_menu_refresh_preserves_native_installation(self):
         with tempfile.TemporaryDirectory() as directory:

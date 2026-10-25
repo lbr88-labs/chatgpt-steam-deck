@@ -42,7 +42,8 @@ the installer falls back to its terminal menu.
   to update it; AppImage deliberately has no automatic updater. The finished app
   runs directly on SteamOS, outside the build container, without an added runtime
   sandbox. The launcher uses AppImage's extract-and-run mode to prevent crashes
-  in Chromium helpers during FUSE teardown. Startup includes an unpacking step.
+  in Chromium helpers during FUSE teardown. Startup includes an unpacking step
+  into a private SSD-backed cache directory, which the launcher removes on exit.
 - **Standard installation — tested build code** — retains the original pacman
   installation with the automatic updater, using the source revision reviewed
   after the successful Steam Deck installation on October 25, 2026

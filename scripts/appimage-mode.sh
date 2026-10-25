@@ -156,18 +156,35 @@ publish_appimage() {
     printf '%s\n' 'chatgpt-steam-deck appimage v1' >"$stage/.managed-by-installer"
     cp -- "$artifact" "$stage/ChatGPT-Community.AppImage"
     chmod 755 "$stage/ChatGPT-Community.AppImage"
+    cat >"$stage/launch-appimage.sh" <<'LAUNCHER'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+app_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Own the extraction directory: runtime versions may retain their cache on exit.
+# Keep it on the SSD, outside SteamOS's quota-limited /tmp.
+# Chromium also uses TMPDIR for Unix sockets, whose paths must stay short.
+runtime_base="$HOME/.cache/chatgpt-runtime"
+mkdir -p "$runtime_base"
+runtime_tmp="$(mktemp -d "$runtime_base/run.XXXXXX")"
+trap 'rm -rf -- "$runtime_tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+export TMPDIR="$runtime_tmp"
+"$app_dir/ChatGPT-Community.AppImage" --appimage-extract-and-run "$@"
+LAUNCHER
+    chmod 755 "$stage/launch-appimage.sh"
     cp -- "$source_dir/codex-app/resources/codex-linux-build-info.json" "$stage/build-info.json"
     cp -- "$source_dir/assets/codex-linux.png" "$stage/icon.png"
     mkdir -p "$stage/metadata-helper/scripts/lib" "$stage/metadata-helper/assets"
     cp -- "$source_dir/scripts/lib/upstream-linux-package.js" "$stage/metadata-helper/scripts/lib/"
     cp -- "$source_dir/assets/openai-codex-linux-repository-key.gpg.base64" "$stage/metadata-helper/assets/"
     # Check the same runtime mode as the menu without opening another app.
-    "$stage/ChatGPT-Community.AppImage" --appimage-extract-and-run --diagnose
+    "$stage/launch-appimage.sh" --diagnose
     desktop_stage="$(mktemp --suffix=.desktop "$(dirname "$APPIMAGE_DESKTOP_FILE")/.codex-desktop.XXXXXX")"
     APPIMAGE_DESKTOP_STAGE="$desktop_stage"
     # FUSE teardown can SIGBUS surviving Chromium helpers on exit. Extract/run
     # keeps their mapped executable pages valid while the app shuts down.
-    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/ChatGPT-Community.AppImage" --appimage-extract-and-run %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/launch-appimage.sh" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
         "$APPIMAGE_HOME" "$APPIMAGE_HOME" >"$desktop_stage"
     # KDE rejects a user-owned launcher without its executable/trust flag.
     chmod 755 "$desktop_stage"
@@ -235,7 +252,7 @@ remove_appimage_installation() {
     remove_managed_appimage_dir "$APPIMAGE_HOME.previous"
     rm -f -- "$APPIMAGE_HOME.previous.desktop"
     # Only delete the menu override installed by this mode.
-    if [[ -f "$APPIMAGE_DESKTOP_FILE" ]] && grep -Fq "$APPIMAGE_HOME/ChatGPT-Community.AppImage" "$APPIMAGE_DESKTOP_FILE"; then
+    if [[ -f "$APPIMAGE_DESKTOP_FILE" ]] && grep -Fq -e "$APPIMAGE_HOME/ChatGPT-Community.AppImage" -e "$APPIMAGE_HOME/launch-appimage.sh" "$APPIMAGE_DESKTOP_FILE"; then
         rm -f -- "$APPIMAGE_DESKTOP_FILE"
     fi
     refresh_application_menu
