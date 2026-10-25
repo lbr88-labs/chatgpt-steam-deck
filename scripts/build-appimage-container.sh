@@ -19,6 +19,8 @@ sudo pacman -Syu --noconfirm --needed \
     ca-certificates curl dpkg git gnupg make nodejs npm python \
     squashfs-tools desktop-file-utils fuse2 file util-linux zstd
 
+python3 "$(dirname "$0")/patch-appimage-desktop.py" "$source_dir"
+
 tool_dir="$HOME/.cache/chatgpt-appimagetool-1.9.1"
 mkdir -p "$tool_dir"
 tool="$tool_dir/appimagetool.AppImage"

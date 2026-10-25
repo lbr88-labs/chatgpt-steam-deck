@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.10'
+INSTALLER_VERSION='2026.10.25.11'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -170,12 +170,13 @@ choose_gui_action() {
     downloaded="$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     "$ZENITY_BIN" --list --radiolist --title='ChatGPT Community — Steam Deck Installer' \
         --width=850 --height=600 --hide-column=2 --print-column=2 \
-        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed: $CURRENT_APP_VERSION ($INSTALLATION_MODE)\nApp version to install: $TARGET_APP_VERSION\n\nAppImage: built locally on your Steam Deck, then installed in your home folder.\nSurvives normal SteamOS updates.\nUpdate it by running this installer again; no automatic updater.\nStandard: the original system-package method, with its automatic updater.\nTested build code was confirmed working on October 25; latest may include untested changes.\n\nSwitching methods removes the old installation after the replacement is ready.\nYour chats and settings are kept. Both methods install the current stable app." \
+        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed: $CURRENT_APP_VERSION ($INSTALLATION_MODE)\nApp version to install: $TARGET_APP_VERSION\n\nAppImage: built locally on your Steam Deck, then installed in your home folder.\nSurvives normal SteamOS updates.\nUpdate it by running this installer again; no automatic updater.\nStandard: the original system-package method, with its automatic updater.\nTested build code was confirmed working on October 25; latest may include untested changes.\n\nBoth installations can be kept. Installing one leaves the other unchanged.\nYour chats and settings are kept. Both methods install the current stable app." \
         --column='Select' --column='Action' --column='What to do' \
         TRUE 1 "$APPIMAGE_ACTION" \
         FALSE 2 "$NATIVE_ACTION (tested build code)" \
         FALSE 5 "$NATIVE_ACTION (latest build code)" \
-        FALSE 3 "Uninstall — $INSTALLATION_MODE (keep your profile)" \
+        FALSE 3 "Uninstall AppImage (keep your profile)" \
+        FALSE 6 "Uninstall standard installation (keep your profile)" \
         --ok-label='Continue' --cancel-label='Close'
 }
 
@@ -457,18 +458,22 @@ install_or_update() {
         return 1
     fi
     ORPHANED_APP_BACKUP=''
-    remove_appimage_installation
+    refresh_application_menu
     systemctl --user enable --now codex-update-manager.service || warn 'Could not enable the automatic updater.'
     MODE_COMMITTED=1
     info "$APP_NAME is installed. Find it in the application launcher under Development."
 }
 
 uninstall_app() {
-    local answer
+    local answer mode="${1:-}"
+    if [[ -z "$mode" ]]; then
+        if appimage_is_installed; then mode=appimage; else mode=native; fi
+    fi
+    TARGET_INSTALLATION="$mode"
     if [[ "$GUI_MODE" -eq 1 ]]; then
         answer=n
         if "$ZENITY_BIN" --question --title='Remove ChatGPT Community?' \
-            --text="Remove ChatGPT Community ($INSTALLATION_MODE)? Its application-menu entry will be updated. Your chats and settings will be kept." \
+            --text="Remove ChatGPT Community ($mode)? Its application-menu entry will be updated. Your chats and settings will be kept." \
             --ok-label='Uninstall' --cancel-label='Keep installed'; then
             answer=y
         fi
@@ -480,7 +485,7 @@ uninstall_app() {
         y|Y|yes|YES)
             validate_platform
             wait_for_app_exit
-            if appimage_is_installed; then
+            if [[ "$mode" == appimage ]]; then
                 remove_appimage_installation
                 info 'AppImage removed. Your chats and settings were kept.'
                 return 0
@@ -510,8 +515,8 @@ show_menu() {
     printf '     Built locally, then installed in your home folder; rerun this installer to update.\n'
     printf '  2) %s — tested build code (%.12s)\n' "$NATIVE_ACTION" "$REVIEWED_REF"
     printf '  5) %s — latest build code\n' "$NATIVE_ACTION"
-    printf 'Switching methods removes the old installation; your chats and settings are kept.\n\n'
-    printf '  3) Uninstall\n'
+    printf 'Both installations can be kept; your chats and settings are kept.\n\n'
+    printf '  3) Uninstall AppImage\n  6) Uninstall standard installation\n'
     printf '  4) Exit\n\n'
     printf 'Choose [1]: '
 }
@@ -542,7 +547,6 @@ main() {
         choice="$(choose_gui_action)" || choice=4
         [[ -n "$choice" ]] || choice=4
         if [[ "$choice" != 4 ]]; then
-            wait_for_app_exit || return 0
             configure_gui_auth
         fi
     else
@@ -550,17 +554,22 @@ main() {
         read -r choice || choice='4'
     fi
     choice="${choice:-1}"
-    if [[ "$GUI_MODE" -eq 0 && "$choice" != 4 ]]; then
+    case "$choice" in 1|3) TARGET_INSTALLATION=appimage ;; 2|5|6) TARGET_INSTALLATION=native ;; esac
+    if [[ "$choice" != 4 ]]; then
         wait_for_app_exit || return 0
     fi
     case "$choice" in
         1) install_appimage ;;
         2) install_or_update "$REVIEWED_REF" ;;
-        3) uninstall_app ;;
+        3) uninstall_app appimage ;;
+        6) uninstall_app native ;;
         4) info 'No changes made.' ;;
         5) install_or_update main ;;
-        *) die 'Choose 1, 2, 3, 4, or 5.' ;;
+        *) die 'Choose 1, 2, 3, 4, 5, or 6.' ;;
     esac
+    # Finish privileged restoration while sudo is still authenticated, rather
+    # than deferring it until the user dismisses the completion dialog.
+    restore_readonly
     if [[ "$GUI_MODE" -eq 1 && "$choice" != 4 ]]; then
         "$ZENITY_BIN" --info --title='ChatGPT Community Installer' \
             --text='Operation finished. You can close this window.'

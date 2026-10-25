@@ -50,13 +50,14 @@ the installer falls back to its terminal menu.
   (`fc533a9346095e74d47c506e3103b7282c5c54d9`).
 - **Standard installation — latest build code** — uses the newest packaging
   fixes, including changes that may not yet be tested on Steam Deck.
-- All choices install the current stable app. When another method is already
-  installed, the option explicitly says that it will switch methods and remove
-  the old installation. The replacement is built and checked first. Switching
-  to AppImage disables the native automatic updater; switching back reinstalls
-  the native package and enables its updater.
-- **Uninstall** — removes the currently installed method after confirmation.
-  It deliberately leaves the shared Codex user profile untouched.
+- Both types may be installed together. The standard entry is **ChatGPT Community**;
+  the separate entry is **ChatGPT Community (AppImage)**. Installing or updating
+  one leaves the other installation and its shortcut intact. The native updater
+  remains enabled. A running copy only blocks changes to that installation type.
+- **Uninstall AppImage** and **Uninstall standard installation** remove only the
+  selected type after confirmation and leave the shared user profile untouched.
+  Both types use that profile, so launching the second while the first is open
+  may activate the existing app rather than open a separate session.
 
 Run the same desktop file again whenever you want to update or uninstall.
 The opening menu shows the running installer's version, release date, file

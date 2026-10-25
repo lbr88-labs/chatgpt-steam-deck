@@ -2,7 +2,7 @@
 # Sourced by installer.sh; the AppImage itself always runs on the host.
 
 APPIMAGE_HOME="${APPIMAGE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/chatgpt-community-appimage}"
-APPIMAGE_DESKTOP_FILE="${APPIMAGE_DESKTOP_FILE:-${XDG_DATA_HOME:-$HOME/.local/share}/applications/codex-desktop.desktop}"
+APPIMAGE_DESKTOP_FILE="${APPIMAGE_DESKTOP_FILE:-${XDG_DATA_HOME:-$HOME/.local/share}/applications/chatgpt-community-appimage.desktop}"
 DISTROBOX_BIN="${DISTROBOX_BIN:-distrobox}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 BUILD_BOX='chatgpt-appimage-builder'
@@ -29,12 +29,12 @@ detect_installation_mode() {
     INSTALLATION_MODE='Not installed'
     APPIMAGE_ACTION='Build and install AppImage (recommended)'
     NATIVE_ACTION='Install or update — standard installation'
-    if appimage_is_installed; then
+    if appimage_is_installed && native_is_installed; then
+        INSTALLATION_MODE='AppImage and standard installation'
+    elif appimage_is_installed; then
         INSTALLATION_MODE='AppImage'
-        NATIVE_ACTION='Switch to standard installation — removes AppImage'
     elif native_is_installed; then
         INSTALLATION_MODE='Standard installation'
-        APPIMAGE_ACTION='Build and switch to AppImage — removes standard installation'
     fi
 }
 
@@ -46,10 +46,20 @@ ensure_package_manager_idle() {
 }
 
 wait_for_app_exit() {
-    if pgrep -u "$(id -u)" -x ChatGPT >/dev/null; then
+    local pid executable blocked=0
+    while read -r pid; do
+        [[ -n "$pid" ]] || continue
+        executable="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+        case "${TARGET_INSTALLATION:-all}" in
+            appimage) [[ "$executable" == "$APP_INSTALL_DIR/ChatGPT" ]] && continue ;;
+            native) [[ -n "$executable" && "$executable" != "$APP_INSTALL_DIR/ChatGPT" ]] && continue ;;
+        esac
+        blocked=1
+    done < <(pgrep -u "$(id -u)" -x ChatGPT || true)
+    if [[ "$blocked" -eq 1 ]]; then
         if [[ "$GUI_MODE" -eq 1 ]]; then
             "$ZENITY_BIN" --info --title='Please close ChatGPT Community' \
-                --text='Please close ChatGPT Community before installing, updating, switching methods, or uninstalling. Then run this desktop installer again. Nothing has been changed.'
+                --text='Please close ChatGPT Community for the selected installation before updating or uninstalling it. Then run this desktop installer again. Nothing has been changed.'
         else
             warn 'Please close ChatGPT Community, then run this desktop installer again. Nothing has been changed.'
         fi
@@ -89,6 +99,14 @@ refresh_application_menu() {
         kbuildsycoca6 --noincremental
     elif command_exists kbuildsycoca5; then
         kbuildsycoca5 --noincremental
+    fi
+}
+
+remove_legacy_appimage_menu() {
+    local legacy="$(dirname "$APPIMAGE_DESKTOP_FILE")/codex-desktop.desktop"
+    if [[ "$legacy" != "$APPIMAGE_DESKTOP_FILE" && -f "$legacy" ]] &&
+       grep -Fq -e "$APPIMAGE_HOME/ChatGPT-Community.AppImage" -e "$APPIMAGE_HOME/launch-appimage.sh" "$legacy"; then
+        rm -f -- "$legacy"
     fi
 }
 
@@ -142,6 +160,7 @@ build_appimage() {
             --home "$CACHE_HOME/appimage-builder-home" --volume "$CACHE_HOME:$CACHE_HOME:rw"
     fi
     download_helper_asset build-appimage-container.sh "$CACHE_HOME/appimage-build-helper.sh"
+    download_helper_asset patch-appimage-desktop.py "$CACHE_HOME/patch-appimage-desktop.py"
     info 'Building the AppImage inside its build environment. The finished app runs directly on SteamOS.'
     DBX_CONTAINER_MANAGER=podman "$DISTROBOX_BIN" enter --name "$BUILD_BOX" \
         --no-tty --clean-path -- bash "$CACHE_HOME/appimage-build-helper.sh" "$source_dir"
@@ -160,6 +179,8 @@ publish_appimage() {
 #!/usr/bin/env bash
 set -Eeuo pipefail
 app_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export CODEX_LINUX_APP_ID=chatgpt-community-appimage
+export CODEX_APPIMAGE_DESKTOP_FILE="$(cat "$app_dir/desktop-entry-path")"
 # Own the extraction directory: runtime versions may retain their cache on exit.
 # Keep it on the SSD, outside SteamOS's quota-limited /tmp.
 # Chromium also uses TMPDIR for Unix sockets, whose paths must stay short.
@@ -173,6 +194,7 @@ export TMPDIR="$runtime_tmp"
 "$app_dir/ChatGPT-Community.AppImage" --appimage-extract-and-run "$@"
 LAUNCHER
     chmod 755 "$stage/launch-appimage.sh"
+    printf '%s\n' "$APPIMAGE_DESKTOP_FILE" >"$stage/desktop-entry-path"
     cp -- "$source_dir/codex-app/resources/codex-linux-build-info.json" "$stage/build-info.json"
     cp -- "$source_dir/assets/codex-linux.png" "$stage/icon.png"
     mkdir -p "$stage/metadata-helper/scripts/lib" "$stage/metadata-helper/assets"
@@ -184,13 +206,12 @@ LAUNCHER
     APPIMAGE_DESKTOP_STAGE="$desktop_stage"
     # FUSE teardown can SIGBUS surviving Chromium helpers on exit. Extract/run
     # keeps their mapped executable pages valid while the app shuts down.
-    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/launch-appimage.sh" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community (AppImage)\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/launch-appimage.sh" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=chatgpt-community-appimage\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
         "$APPIMAGE_HOME" "$APPIMAGE_HOME" >"$desktop_stage"
     # KDE rejects a user-owned launcher without its executable/trust flag.
     chmod 755 "$desktop_stage"
     if command_exists desktop-file-validate; then desktop-file-validate "$desktop_stage"; fi
 
-    pause_native_updater
     wait_for_app_exit
     ensure_package_manager_idle
     # Everything needed for the new install is ready before the old one moves.
@@ -212,23 +233,14 @@ LAUNCHER
     mv -T -- "$stage" "$APPIMAGE_HOME"
     APPIMAGE_DESKTOP_PUBLISHED=1
     mv -T -- "$desktop_stage" "$APPIMAGE_DESKTOP_FILE"
-    # Ensure KDE sees the replacement launcher before removing its old target.
+    # Refresh the independently named AppImage menu entry.
     refresh_application_menu
-    if "$PACMAN_BIN" -Qq "$PACKAGE_NAME" >/dev/null 2>&1; then
-        ensure_writable_system
-        if ! run_root "$PACMAN_BIN" -R --noconfirm "$PACKAGE_NAME"; then
-            cleanup_installation_mode
-            return 1
-        fi
-    elif [[ -d "$APP_INSTALL_DIR" ]]; then
-        ensure_writable_system
-        recover_orphaned_app_tree
-    fi
     APPIMAGE_TRANSACTION=0
     MODE_COMMITTED=1
     ORPHANED_APP_BACKUP=''
+    remove_legacy_appimage_menu
     refresh_application_menu || warn 'Could not refresh the application menu after switching.'
-    info 'AppImage installed. Open ChatGPT Community from the application menu. Run this desktop installer again to update it.'
+    info 'AppImage installed. Open ChatGPT Community (AppImage) from the application menu. Run this desktop installer again to update it.'
 }
 
 install_appimage() {
@@ -251,6 +263,7 @@ remove_appimage_installation() {
     remove_managed_appimage_dir "$APPIMAGE_HOME"
     remove_managed_appimage_dir "$APPIMAGE_HOME.previous"
     rm -f -- "$APPIMAGE_HOME.previous.desktop"
+    remove_legacy_appimage_menu
     # Only delete the menu override installed by this mode.
     if [[ -f "$APPIMAGE_DESKTOP_FILE" ]] && grep -Fq -e "$APPIMAGE_HOME/ChatGPT-Community.AppImage" -e "$APPIMAGE_HOME/launch-appimage.sh" "$APPIMAGE_DESKTOP_FILE"; then
         rm -f -- "$APPIMAGE_DESKTOP_FILE"

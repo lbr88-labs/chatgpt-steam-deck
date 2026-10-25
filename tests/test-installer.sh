@@ -584,6 +584,32 @@ test_gui_reviewed_choice() {
     assert_eq 'clicking reviewed choice selects the pinned revision without terminal input' "$REVIEWED_REF" "$selected"
 }
 
+test_gui_finishes_privileged_work_before_dialog() {
+    local log="$TEST_TMP/finish-order" fake="$TEST_TMP/finish-zenity"
+    printf '#!/bin/sh\necho dialog >> "%s"\n' "$log" >"$fake"
+    chmod +x "$fake"
+    (
+        DISPLAY=:test
+        ZENITY_BIN="$fake"
+        load_version_summary() { :; }
+        load_appimage_support() {
+            source "$ROOT_DIR/scripts/appimage-mode.sh"
+            wait_for_app_exit() { :; }
+        }
+        choose_gui_action() { echo 2; }
+        configure_gui_auth() { :; }
+        install_or_update() { READONLY_CHANGED=1; }
+        restore_readonly() {
+            if [[ "$READONLY_CHANGED" -eq 1 ]]; then
+                echo restore >>"$log"
+                READONLY_CHANGED=0
+            fi
+        }
+        main </dev/null
+    )
+    assert_eq 'read-only restoration completes before the finished dialog' $'restore\ndialog' "$(cat "$log")"
+}
+
 test_desktop_launcher() {
     local desktop_file="$ROOT_DIR/Install ChatGPT Community.desktop"
     if [[ ! -f "$desktop_file" ]]; then
@@ -654,6 +680,7 @@ test_cleanup_restores_orphaned_app_tree
 test_uninstall_cancellation
 test_gui_auth_and_cancel
 test_gui_reviewed_choice
+test_gui_finishes_privileged_work_before_dialog
 test_desktop_launcher
 test_release_packaging
 

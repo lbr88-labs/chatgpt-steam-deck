@@ -60,7 +60,7 @@ set -Eeuo pipefail
 export INSTALLER_TEST_MODE=1
 source "$TEST_ROOT/installer.sh"
 APPIMAGE_HOME="$TEST_BASE/installed"
-export APPIMAGE_DESKTOP_FILE="$TEST_BASE/applications/codex-desktop.desktop"
+export APPIMAGE_DESKTOP_FILE="$TEST_BASE/applications/chatgpt-community-appimage.desktop"
 APP_INSTALL_DIR="$TEST_BASE/opt-codex"
 PACMAN_BIN="$TEST_BASE/pacman"
 source "$TEST_ROOT/scripts/appimage-mode.sh"
@@ -74,16 +74,16 @@ systemctl() { :; }
 ''' + command
         return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
 
-    def test_native_to_appimage_and_back_removes_only_installation(self):
+    def test_appimage_install_and_removal_preserve_native_installation(self):
         with tempfile.TemporaryDirectory() as directory:
             base = pathlib.Path(directory)
             self.prepare(base)
             result = self.run_shell(base, r'''
 detect_installation_mode
 test "$INSTALLATION_MODE" = 'Standard installation'
-test "$APPIMAGE_ACTION" = 'Build and switch to AppImage — removes standard installation'
+test "$APPIMAGE_ACTION" = 'Build and install AppImage (recommended)'
 publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
-test ! -f "$TEST_BASE/registered"
+test -f "$TEST_BASE/registered"
 appimage_is_installed
 test -x "$APPIMAGE_DESKTOP_FILE"
 test -O "$APPIMAGE_DESKTOP_FILE"
@@ -94,8 +94,8 @@ test -x "$APPIMAGE_HOME/launch-appimage.sh"
 test ! -e "$(cat "$TEST_BASE/runtime-path")"
 grep -q '^Categories=Development;' "$APPIMAGE_DESKTOP_FILE"
 detect_installation_mode
-test "$INSTALLATION_MODE" = AppImage
-test "$NATIVE_ACTION" = 'Switch to standard installation — removes AppImage'
+test "$INSTALLATION_MODE" = 'AppImage and standard installation'
+test "$NATIVE_ACTION" = 'Install or update — standard installation'
 # A successful native installer calls this only after installing its package.
 touch "$TEST_BASE/registered"
 remove_appimage_installation
@@ -129,7 +129,7 @@ test ! -e "$(cat "$TEST_BASE/runtime-path")"
             self.assertTrue((base / "registered").exists())
             self.assertFalse((base / "removal-attempted").exists())
 
-    def test_failed_native_removal_restores_previous_appimage_and_menu(self):
+    def test_failed_menu_refresh_restores_previous_appimage_and_menu(self):
         with tempfile.TemporaryDirectory() as directory:
             base = pathlib.Path(directory)
             self.prepare(base)
@@ -140,11 +140,11 @@ test ! -e "$(cat "$TEST_BASE/runtime-path")"
             image.write_text("old working app")
             image.chmod(0o755)
             (base / "applications").mkdir()
-            desktop = base / "applications/codex-desktop.desktop"
+            desktop = base / "applications/chatgpt-community-appimage.desktop"
             desktop.write_text("previous menu entry")
-            result = self.run_shell(base, r'publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"', fail=True)
+            result = self.run_shell(base, r'publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"', fail_menu=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertTrue((base / "removal-attempted").exists(), result.stdout + result.stderr)
+            self.assertFalse((base / "removal-attempted").exists(), result.stdout + result.stderr)
             self.assertEqual(image.read_text(), "old working app")
             self.assertEqual(desktop.read_text(), "previous menu entry")
             self.assertTrue((base / "registered").exists())
@@ -157,7 +157,7 @@ test ! -e "$(cat "$TEST_BASE/runtime-path")"
 # Use the actual preflight function with a simulated running app.
 source "$TEST_ROOT/scripts/appimage-mode.sh"
 GUI_MODE=0
-pgrep() { return 0; }
+pgrep() { echo 999999; }
 wait_for_app_exit
 ''')
             self.assertNotEqual(result.returncode, 0)
@@ -175,12 +175,12 @@ validate_platform() { :; }
 printf 'y\n' | uninstall_app
 test ! -e "$APPIMAGE_HOME"
 test ! -e "$APPIMAGE_DESKTOP_FILE"
-test ! -e "$TEST_BASE/registered"
 ''')
+                self.assertEqual((base / "registered").exists(), appimage)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual((base / "profile").read_text(), "keep chats and settings")
 
-    def test_native_switch_cleans_appimage_only_after_successful_install(self):
+    def test_native_update_preserves_appimage_on_success_and_failure(self):
         for succeeds in [False, True]:
             with self.subTest(succeeds=succeeds), tempfile.TemporaryDirectory() as directory:
                 base = pathlib.Path(directory)
@@ -206,9 +206,9 @@ MAKE_BIN="$TEST_BASE/make"
 install_or_update main
 ''')
                 self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
-                self.assertEqual((base / "installed/ChatGPT-Community.AppImage").exists(), not succeeds)
-                self.assertEqual((base / "applications/codex-desktop.desktop").exists(), not succeeds)
-                self.assertEqual((base / "registered").exists(), succeeds)
+                self.assertEqual((base / "installed/ChatGPT-Community.AppImage").exists(), True)
+                self.assertEqual((base / "applications/chatgpt-community-appimage.desktop").exists(), True)
+                self.assertEqual((base / "registered").exists(), True)
 
     def test_unmanaged_directory_is_never_removed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -219,6 +219,36 @@ install_or_update main
             result = self.run_shell(base, 'remove_managed_appimage_dir "$APPIMAGE_HOME"')
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual((base / "installed/user-file").read_text(), "keep")
+
+    def test_running_native_app_allows_appimage_install_but_blocks_native_update(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            self.prepare(base)
+            result = self.run_shell(base, r'''
+source "$TEST_ROOT/scripts/appimage-mode.sh"
+GUI_MODE=0
+pgrep() { echo 123; }
+readlink() { printf '%s' "$APP_INSTALL_DIR/ChatGPT"; }
+TARGET_INSTALLATION=appimage
+wait_for_app_exit
+TARGET_INSTALLATION=native
+if wait_for_app_exit; then exit 9; fi
+''')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_native_uninstall_keeps_appimage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            self.prepare(base)
+            result = self.run_shell(base, r'''
+publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
+validate_platform() { :; }
+printf 'y\n' | uninstall_app native
+appimage_is_installed
+test -f "$APPIMAGE_DESKTOP_FILE"
+test ! -f "$TEST_BASE/registered"
+''')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
