@@ -16,6 +16,7 @@ UNAME_BIN="${UNAME_BIN:-uname}"
 STEAMOS_READONLY_BIN="${STEAMOS_READONLY_BIN:-steamos-readonly}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 PACMAN_KEYRING_FILE="${PACMAN_KEYRING_FILE:-/etc/pacman.d/gnupg/pubring.gpg}"
+DPKG_STATE_DIR="${DPKG_STATE_DIR:-/var/lib/dpkg}"
 CACHE_HOME="${CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck}"
 
 READONLY_INITIAL=''
@@ -109,6 +110,99 @@ ensure_pacman_keyring() {
     run_root "$PACMAN_KEY_BIN" --populate archlinux holo
 }
 
+recover_stale_dpkg_state() {
+    local entry path query_output query_status backup_dir
+    local found_available=0 found_status=0
+    local restore_nullglob=0 restore_dotglob=0
+    local -a state_entries=()
+
+    if query_output="$(LC_ALL=C "$PACMAN_BIN" -Qq dpkg 2>&1)"; then
+        return 0
+    else
+        query_status=$?
+    fi
+    if [[ "$query_status" -ne 1 || "$query_output" != "error: package 'dpkg' was not found" ]]; then
+        die 'Could not verify whether dpkg is installed; refusing automatic recovery.'
+        return 1
+    fi
+
+    if [[ -L "$DPKG_STATE_DIR" ]]; then
+        die "Refusing to alter a symlinked dpkg state directory at $DPKG_STATE_DIR."
+        return 1
+    fi
+    [[ -d "$DPKG_STATE_DIR" ]] || return 0
+
+    if [[ ! -r "$DPKG_STATE_DIR" || ! -x "$DPKG_STATE_DIR" ]]; then
+        die "Could not inspect dpkg state at $DPKG_STATE_DIR; refusing automatic recovery."
+        return 1
+    fi
+
+    shopt -q nullglob && restore_nullglob=1
+    shopt -q dotglob && restore_dotglob=1
+    shopt -s nullglob dotglob
+    state_entries=("$DPKG_STATE_DIR"/*)
+    [[ "$restore_nullglob" -eq 1 ]] || shopt -u nullglob
+    [[ "$restore_dotglob" -eq 1 ]] || shopt -u dotglob
+
+    for path in "${state_entries[@]}"; do
+        entry="${path##*/}"
+        case "$entry" in
+            available) found_available=1 ;;
+            status) found_status=1 ;;
+            *)
+                die "Refusing to alter unexpected dpkg state left at $DPKG_STATE_DIR/$entry."
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ "$found_available" -ne 1 || "$found_status" -ne 1 ]]; then
+        die "Refusing to alter incomplete dpkg state at $DPKG_STATE_DIR."
+        return 1
+    fi
+
+    for entry in available status; do
+        path="$DPKG_STATE_DIR/$entry"
+        if [[ -L "$path" || ! -f "$path" || -s "$path" ]]; then
+            die "Refusing to alter nonempty or non-regular dpkg state at $path."
+            return 1
+        fi
+        if query_output="$(LC_ALL=C "$PACMAN_BIN" -Qo "$path" 2>&1)"; then
+            die "Refusing to alter package-owned dpkg state at $path."
+            return 1
+        else
+            query_status=$?
+        fi
+        if [[ "$query_status" -ne 1 || "$query_output" != "error: No package owns $path" ]]; then
+            die "Could not verify package ownership for $path; refusing automatic recovery."
+            return 1
+        fi
+    done
+
+    if ! backup_dir="$(run_root mktemp -d "${DPKG_STATE_DIR}.chatgpt-steam-deck.XXXXXX")"; then
+        die 'Could not allocate a protected dpkg recovery path.'
+        return 1
+    fi
+    case "$backup_dir" in
+        "${DPKG_STATE_DIR}.chatgpt-steam-deck."*) ;;
+        *)
+            die "Refusing unexpected dpkg recovery path: $backup_dir"
+            return 1
+            ;;
+    esac
+    if ! run_root rmdir -- "$backup_dir"; then
+        die "Could not prepare protected dpkg recovery path at $backup_dir."
+        return 1
+    fi
+
+    info 'Recovering empty dpkg state files preserved by a SteamOS upgrade.'
+    if ! run_root mv -T -- "$DPKG_STATE_DIR" "$backup_dir"; then
+        die "Could not preserve stale dpkg state at $backup_dir."
+        return 1
+    fi
+    info "Preserved the stale dpkg state at $backup_dir."
+}
+
 check_disk_space() {
     local available_kib required_kib=$((6 * 1024 * 1024))
     available_kib="$(df -Pk "$CACHE_HOME" 2>/dev/null | awk 'NR == 2 {print $4}')"
@@ -182,6 +276,7 @@ install_or_update() {
 
     capture_readonly_state
     ensure_writable_system
+    recover_stale_dpkg_state
     ensure_pacman_keyring
 
     info 'Installing the build dependencies declared by the upstream project.'

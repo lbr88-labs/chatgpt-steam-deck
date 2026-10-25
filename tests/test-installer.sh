@@ -149,6 +149,241 @@ SCRIPT
     PACMAN_KEYRING_FILE=/etc/pacman.d/gnupg/pubring.gpg
 }
 
+test_stale_dpkg_state_recovery() {
+    local state_dir="$TEST_TMP/dpkg-state"
+    local cache_dir="$TEST_TMP/recovery-cache"
+    local fake_pacman="$TEST_TMP/pacman-unowned"
+    mkdir -p "$state_dir" "$cache_dir"
+    : >"$state_dir/available"
+    : >"$state_dir/status"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ] && [ "$2" = dpkg ]; then' \
+        '    printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        '    exit 1' \
+        'fi' \
+        'if [ "$1" = -Qo ]; then' \
+        '    printf "error: No package owns %s\\n" "$2" >&2' \
+        '    exit 1' \
+        'fi' \
+        'exit 2' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    recover_stale_dpkg_state
+
+    if [[ ! -e "$state_dir" ]]; then
+        pass 'stale dpkg state directory is removed from the pacman target path'
+    else
+        fail 'stale dpkg state directory is removed from the pacman target path'
+    fi
+
+    local backup_dir
+    backup_dir="$(find "$TEST_TMP" -mindepth 1 -maxdepth 1 -type d -name 'dpkg-state.chatgpt-steam-deck.*' -print -quit)"
+    if [[ -n "$backup_dir" && -f "$backup_dir/available" && -f "$backup_dir/status" ]]; then
+        pass 'stale dpkg state is preserved beside the original system state'
+    else
+        fail 'stale dpkg state is preserved beside the original system state'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_dpkg_recovery_refuses_nonempty_state() {
+    local state_dir="$TEST_TMP/dpkg-nonempty"
+    local cache_dir="$TEST_TMP/nonempty-cache"
+    local fake_pacman="$TEST_TMP/pacman-unowned-nonempty"
+    mkdir -p "$state_dir" "$cache_dir"
+    printf 'important package state\n' >"$state_dir/status"
+    : >"$state_dir/available"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    if recover_stale_dpkg_state >/dev/null 2>&1; then
+        fail 'nonempty dpkg state is never moved automatically'
+    else
+        pass 'nonempty dpkg state is never moved automatically'
+    fi
+    if [[ -s "$state_dir/status" ]]; then
+        pass 'refused dpkg state remains untouched'
+    else
+        fail 'refused dpkg state remains untouched'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_dpkg_recovery_refuses_unexpected_entries() {
+    local state_dir="$TEST_TMP/dpkg-unexpected"
+    local cache_dir="$TEST_TMP/unexpected-cache"
+    local fake_pacman="$TEST_TMP/pacman-unowned-unexpected"
+    mkdir -p "$state_dir" "$cache_dir"
+    : >"$state_dir/available"
+    : >"$state_dir/status"
+    : >"$state_dir/unexpected"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    if recover_stale_dpkg_state >/dev/null 2>&1; then
+        fail 'unexpected dpkg entries prevent automatic recovery'
+    else
+        pass 'unexpected dpkg entries prevent automatic recovery'
+    fi
+    if [[ -e "$state_dir/unexpected" ]]; then
+        pass 'unexpected dpkg entries remain untouched'
+    else
+        fail 'unexpected dpkg entries remain untouched'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_dpkg_recovery_refuses_symlinked_state_directory() {
+    local real_dir="$TEST_TMP/dpkg-real"
+    local state_dir="$TEST_TMP/dpkg-symlink"
+    local cache_dir="$TEST_TMP/symlink-cache"
+    local fake_pacman="$TEST_TMP/pacman-unowned-symlink"
+    mkdir -p "$real_dir" "$cache_dir"
+    : >"$real_dir/available"
+    : >"$real_dir/status"
+    ln -s "$real_dir" "$state_dir"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    if recover_stale_dpkg_state >/dev/null 2>&1; then
+        fail 'symlinked dpkg state directory is never moved automatically'
+    else
+        pass 'symlinked dpkg state directory is never moved automatically'
+    fi
+    if [[ -L "$state_dir" && -f "$real_dir/status" ]]; then
+        pass 'symlinked dpkg state remains untouched'
+    else
+        fail 'symlinked dpkg state remains untouched'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_dpkg_recovery_refuses_pacman_query_errors() {
+    local state_dir="$TEST_TMP/dpkg-query-error"
+    local cache_dir="$TEST_TMP/query-error-cache"
+    local fake_pacman="$TEST_TMP/pacman-query-error"
+    mkdir -p "$state_dir" "$cache_dir"
+    : >"$state_dir/available"
+    : >"$state_dir/status"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ]; then' \
+        '    printf "error: local package database is unreadable\\n" >&2' \
+        '    printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        '    exit 1' \
+        'fi' \
+        'printf "error: No package owns %s\\n" "$2" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    if recover_stale_dpkg_state >/dev/null 2>&1; then
+        fail 'pacman query errors prevent automatic recovery'
+    else
+        pass 'pacman query errors prevent automatic recovery'
+    fi
+    if [[ -d "$state_dir" && -f "$state_dir/status" ]]; then
+        pass 'pacman query errors leave dpkg state untouched'
+    else
+        fail 'pacman query errors leave dpkg state untouched'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_dpkg_recovery_refuses_newline_filename() {
+    local state_dir="$TEST_TMP/dpkg-newline-name"
+    local cache_dir="$TEST_TMP/newline-name-cache"
+    local fake_pacman="$TEST_TMP/pacman-unowned-newline-name"
+    mkdir -p "$state_dir" "$cache_dir"
+    : >"$state_dir/available"
+    : >"$state_dir/status"
+    : >"$state_dir/"$'available\nstatus'
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ]; then' \
+        '    printf "error: package '\''dpkg'\'' was not found\\n" >&2' \
+        '    exit 1' \
+        'fi' \
+        'printf "error: No package owns %s\\n" "$2" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    DPKG_STATE_DIR="$state_dir"
+    CACHE_HOME="$cache_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    if recover_stale_dpkg_state >/dev/null 2>&1; then
+        fail 'newline-containing dpkg entries prevent automatic recovery'
+    else
+        pass 'newline-containing dpkg entries prevent automatic recovery'
+    fi
+    if [[ -e "$state_dir/"$'available\nstatus' ]]; then
+        pass 'newline-containing dpkg entries remain untouched'
+    else
+        fail 'newline-containing dpkg entries remain untouched'
+    fi
+
+    DPKG_STATE_DIR=/var/lib/dpkg
+    CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck"
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
 test_uninstall_cancellation() {
     local log="$TEST_TMP/sudo-log"
     local fake="$TEST_TMP/sudo"
@@ -224,6 +459,12 @@ test_progress_output_does_not_corrupt_results
 test_unsupported_architecture
 test_readonly_restoration
 test_keyring_initialization
+test_stale_dpkg_state_recovery
+test_dpkg_recovery_refuses_nonempty_state
+test_dpkg_recovery_refuses_unexpected_entries
+test_dpkg_recovery_refuses_symlinked_state_directory
+test_dpkg_recovery_refuses_pacman_query_errors
+test_dpkg_recovery_refuses_newline_filename
 test_uninstall_cancellation
 test_desktop_launcher
 test_release_packaging

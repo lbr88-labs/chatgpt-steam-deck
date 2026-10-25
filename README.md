@@ -49,6 +49,13 @@ necessary, installs build dependencies, and invokes the upstream project’s
 native installer. It restores the Deck’s original read-only state on success,
 failure, or interruption.
 
+SteamOS upgrades can remove the locally installed `dpkg` package while leaving
+its two empty state files behind. Before reinstalling build dependencies, the
+helper recognizes only that exact unowned, empty state and preserves it in an
+adjacent protected recovery directory under `/var/lib` so pacman can
+reinstall `dpkg` normally. Nonempty state, package-owned files, symbolic links,
+or any unexpected entry are never moved automatically.
+
 The upstream project verifies OpenAI’s signed stable APT metadata and package
 hashes, extracts only the verified data payload, and packages it independently
 as `codex-desktop`. This helper does not disable those checks, execute OpenAI
