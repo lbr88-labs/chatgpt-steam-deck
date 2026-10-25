@@ -355,7 +355,7 @@ patch_steamos_updater() {
     info 'Applying SteamOS support to automatic updater installation and rollback.'
     "$CURL_BIN" --fail --location --proto '=https' --tlsv1.2 --retry 3 \
         --output "$patch_script" \
-        https://raw.githubusercontent.com/lbr88-labs/chatgpt-steam-deck/main/scripts/patch-steamos-updater.py
+        "https://raw.githubusercontent.com/lbr88-labs/chatgpt-steam-deck/main/scripts/patch-steamos-updater.py?ts=$(date +%s)"
     python3 "$patch_script" "$source_dir"
 }
 
