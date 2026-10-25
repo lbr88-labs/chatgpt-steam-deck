@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.3'
+INSTALLER_VERSION='2026.10.25.4'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -163,11 +163,11 @@ choose_gui_action() {
     read -r fingerprint _ < <(sha256sum -- "${BASH_SOURCE[0]}")
     downloaded="$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     "$ZENITY_BIN" --list --radiolist --title='ChatGPT Community — Steam Deck Installer' \
-        --width=760 --height=460 --hide-column=2 --print-column=2 \
-        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed app: $CURRENT_APP_VERSION\nTarget app (signed stable): $TARGET_APP_VERSION\n\nSelect an action. Build output remains visible in the terminal." \
+        --width=800 --height=560 --hide-column=2 --print-column=2 \
+        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed app: $CURRENT_APP_VERSION\nApp version to install: $TARGET_APP_VERSION\n\nLatest build method: newest fixes, but recent changes may not be tested on Steam Deck.\nTested build method: code confirmed working on Steam Deck on October 25, 2026.\nBoth choices install the current stable app; only the code used to build it differs.\n\nSelect an action. Build output remains visible in the terminal." \
         --column='Select' --column='Action' --column='What to do' \
-        TRUE 1 'Install or update from upstream main' \
-        FALSE 2 "Install or update from reviewed commit ${REVIEWED_REF:0:12}" \
+        TRUE 1 'Install or update — latest build method' \
+        FALSE 2 'Install or update — tested build method' \
         FALSE 3 'Uninstall the app (keep your profile)' \
         --ok-label='Continue' --cancel-label='Close'
 }
@@ -485,8 +485,11 @@ show_menu() {
     printf 'Installer file downloaded/modified: %s\n' "$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     printf 'Source: github.com/lbr88-labs/chatgpt-steam-deck\n\n'
     printf 'Currently installed app: %s\nTarget app (signed stable): %s\n\n' "$CURRENT_APP_VERSION" "$TARGET_APP_VERSION"
-    printf '  1) Install or update from upstream main (default)\n'
-    printf '  2) Install or update from reviewed commit %.12s\n' "$REVIEWED_REF"
+    printf '  1) Install or update — latest build method (default)\n'
+    printf '     Newest fixes; recent changes may not be tested on Steam Deck.\n'
+    printf '  2) Install or update — tested build method\n'
+    printf '     Confirmed working on Steam Deck on October 25, 2026 (%.12s).\n' "$REVIEWED_REF"
+    printf '  Both choices install the current stable app.\n\n'
     printf '  3) Uninstall\n'
     printf '  4) Exit\n\n'
     printf 'Choose [1]: '

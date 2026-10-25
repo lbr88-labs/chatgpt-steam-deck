@@ -23,7 +23,7 @@ the related Decky repository installs only the Quick Access integration.
 4. If SteamOS asks, right-click the file, choose **Properties → Permissions**,
    enable **Is executable**, and select **OK**.
 5. Double-click the file and choose **Execute**.
-6. In the dialog, select **install or update from upstream main** and click
+6. In the dialog, select **Install or update — latest build method** and click
    **Continue**.
 
 Keep the terminal open while it works. A fresh build can take several minutes,
@@ -35,11 +35,13 @@ the installer falls back to its terminal menu.
 
 ## Menu choices
 
-- **Install or update from upstream main** — recommended default; downloads the
-  current source from `ilysenko/codex-desktop-linux`.
-- **Install or update from reviewed commit** — uses the source revision reviewed
+- **Install or update — latest build method** — default; uses the newest build
+  code, including recent fixes that may not yet be tested on Steam Deck.
+- **Install or update — tested build method** — uses the source revision reviewed
   after the successful Steam Deck installation on October 25, 2026
   (`fc533a9346095e74d47c506e3103b7282c5c54d9`).
+- Both choices install the current stable app. The choice changes the code used
+  to build and package it, not the app release channel.
 - **Uninstall** — removes the `codex-desktop` system package after confirmation.
   It deliberately leaves the shared Codex user profile untouched.
 
