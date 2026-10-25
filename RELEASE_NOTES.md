@@ -1,5 +1,8 @@
 # Unreleased
 
+- Integrate SteamOS read-only handling into the bundled automatic updater's
+  privileged pacman installation and rollback paths, preserving the initial
+  read-only state after successful or failed package transactions.
 - Recover safely when a SteamOS upgrade removes the pacman-managed `dpkg`
   package but preserves its empty state files.
 - Preserve recovered state in a protected system recovery directory and refuse

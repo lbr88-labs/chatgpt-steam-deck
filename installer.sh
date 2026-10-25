@@ -347,6 +347,16 @@ ensure_rust_toolchain() {
     rustup default stable
 }
 
+patch_steamos_updater() {
+    local source_dir="$1" patch_script
+    patch_script="$CACHE_HOME/patch-steamos-updater.py"
+    info 'Applying SteamOS support to automatic updater installation and rollback.'
+    "$CURL_BIN" --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+        --output "$patch_script" \
+        https://raw.githubusercontent.com/lbr88-labs/chatgpt-steam-deck/main/scripts/patch-steamos-updater.py
+    python3 "$patch_script" "$source_dir"
+}
+
 install_or_update() {
     local ref="$1" source_dir
     validate_platform
@@ -362,6 +372,7 @@ install_or_update() {
     info 'Installing the build dependencies declared by the upstream project.'
     (cd "$source_dir" && bash scripts/install-deps.sh)
     ensure_rust_toolchain
+    patch_steamos_updater "$source_dir"
 
     info "Building $APP_NAME. This can take several minutes."
     (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" \

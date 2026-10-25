@@ -64,6 +64,14 @@ fails before creating the replacement, the previous tree is restored. A
 registered or package-owned installation is never moved and is upgraded in
 place by pacman as usual.
 
+The app package includes upstream's automatic updater. Before building, this
+helper applies a small SteamOS integration to its privileged installation and
+rollback paths: temporarily disable read-only mode only when enabled, then
+restore it whether pacman succeeds or fails. Automatic rebuilds carry forward
+the installed updater binary, including this integration. Run this desktop
+installer once to install the corrected updater; an already staged update uses
+the updater currently installed on the system.
+
 The upstream project verifies OpenAI’s signed stable APT metadata and package
 hashes, extracts only the verified data payload, and packages it independently
 as `codex-desktop`. This helper does not disable those checks, execute OpenAI
