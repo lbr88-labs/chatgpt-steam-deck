@@ -19,7 +19,7 @@ class AppImageTests(unittest.TestCase):
         (source / "assets/openai-codex-linux-repository-key.gpg.base64").write_text("test key")
         (source / "scripts/lib/upstream-linux-package.js").write_text("// test verifier")
         artifact = base / "candidate.AppImage"
-        artifact.write_text('#!/bin/sh\n[ "$1" = --diagnose ]\n')
+        artifact.write_text('#!/bin/sh\n[ "$1" = --appimage-extract-and-run ] && [ "$2" = --diagnose ]\n')
         artifact.chmod(0o755)
         (base / "registered").touch()
         (base / "profile").write_text("keep chats and settings")
@@ -81,11 +81,15 @@ systemctl() { :; }
             result = self.run_shell(base, r'''
 detect_installation_mode
 test "$INSTALLATION_MODE" = 'Standard installation'
-test "$APPIMAGE_ACTION" = 'Switch to AppImage — removes standard installation'
+test "$APPIMAGE_ACTION" = 'Build and switch to AppImage — removes standard installation'
 publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
 test ! -f "$TEST_BASE/registered"
 appimage_is_installed
+test -x "$APPIMAGE_DESKTOP_FILE"
+test -O "$APPIMAGE_DESKTOP_FILE"
+test -O "$APPIMAGE_HOME/ChatGPT-Community.AppImage"
 grep -q 'ChatGPT-Community.AppImage' "$APPIMAGE_DESKTOP_FILE"
+grep -q -- '--appimage-extract-and-run %U' "$APPIMAGE_DESKTOP_FILE"
 grep -q 'ChatGPT-Community.AppImage' "$TEST_BASE/cached-menu"
 grep -q '^Categories=Development;' "$APPIMAGE_DESKTOP_FILE"
 detect_installation_mode

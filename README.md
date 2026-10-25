@@ -36,12 +36,13 @@ the installer falls back to its terminal menu.
 
 ## Menu choices
 
-- **Install or update — AppImage** — default. Builds in a reusable Distrobox
+- **Build and install AppImage** — default. Builds in a reusable Distrobox
   environment and installs in your home folder, together with its application
   menu entry. Normal SteamOS upgrades preserve both. Run this installer again
   to update it; AppImage deliberately has no automatic updater. The finished app
   runs directly on SteamOS, outside the build container, without an added runtime
-  sandbox.
+  sandbox. The launcher uses AppImage's extract-and-run mode to prevent crashes
+  in Chromium helpers during FUSE teardown. Startup includes an unpacking step.
 - **Standard installation — tested build code** — retains the original pacman
   installation with the automatic updater, using the source revision reviewed
   after the successful Steam Deck installation on October 25, 2026

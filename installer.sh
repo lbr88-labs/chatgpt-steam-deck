@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.7'
+INSTALLER_VERSION='2026.10.25.8'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -170,7 +170,7 @@ choose_gui_action() {
     downloaded="$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     "$ZENITY_BIN" --list --radiolist --title='ChatGPT Community — Steam Deck Installer' \
         --width=850 --height=600 --hide-column=2 --print-column=2 \
-        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed: $CURRENT_APP_VERSION ($INSTALLATION_MODE)\nApp version to install: $TARGET_APP_VERSION\n\nAppImage: kept in your home folder, survives normal SteamOS updates.\nUpdate it by running this installer again; no automatic updater.\nStandard: the original system-package method, with its automatic updater.\nTested build code was confirmed working on October 25; latest may include untested changes.\n\nSwitching methods removes the old installation after the replacement is ready.\nYour chats and settings are kept. Both methods install the current stable app." \
+        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed: $CURRENT_APP_VERSION ($INSTALLATION_MODE)\nApp version to install: $TARGET_APP_VERSION\n\nAppImage: built locally on your Steam Deck, then installed in your home folder.\nSurvives normal SteamOS updates.\nUpdate it by running this installer again; no automatic updater.\nStandard: the original system-package method, with its automatic updater.\nTested build code was confirmed working on October 25; latest may include untested changes.\n\nSwitching methods removes the old installation after the replacement is ready.\nYour chats and settings are kept. Both methods install the current stable app." \
         --column='Select' --column='Action' --column='What to do' \
         TRUE 1 "$APPIMAGE_ACTION" \
         FALSE 2 "$NATIVE_ACTION (tested build code)" \
@@ -507,7 +507,7 @@ show_menu() {
     printf 'Currently installed app: %s\nTarget app (signed stable): %s\n\n' "$CURRENT_APP_VERSION" "$TARGET_APP_VERSION"
     printf 'Current installation method: %s\n' "$INSTALLATION_MODE"
     printf '  1) %s (default)\n' "$APPIMAGE_ACTION"
-    printf '     Stored in your home folder; update by rerunning this installer.\n'
+    printf '     Built locally, then installed in your home folder; rerun this installer to update.\n'
     printf '  2) %s — tested build code (%.12s)\n' "$NATIVE_ACTION" "$REVIEWED_REF"
     printf '  5) %s — latest build code\n' "$NATIVE_ACTION"
     printf 'Switching methods removes the old installation; your chats and settings are kept.\n\n'

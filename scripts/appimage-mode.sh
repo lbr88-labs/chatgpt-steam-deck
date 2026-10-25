@@ -27,14 +27,14 @@ native_is_installed() {
 
 detect_installation_mode() {
     INSTALLATION_MODE='Not installed'
-    APPIMAGE_ACTION='Install or update — AppImage (recommended)'
+    APPIMAGE_ACTION='Build and install AppImage (recommended)'
     NATIVE_ACTION='Install or update — standard installation'
     if appimage_is_installed; then
         INSTALLATION_MODE='AppImage'
         NATIVE_ACTION='Switch to standard installation — removes AppImage'
     elif native_is_installed; then
         INSTALLATION_MODE='Standard installation'
-        APPIMAGE_ACTION='Switch to AppImage — removes standard installation'
+        APPIMAGE_ACTION='Build and switch to AppImage — removes standard installation'
     fi
 }
 
@@ -161,13 +161,16 @@ publish_appimage() {
     mkdir -p "$stage/metadata-helper/scripts/lib" "$stage/metadata-helper/assets"
     cp -- "$source_dir/scripts/lib/upstream-linux-package.js" "$stage/metadata-helper/scripts/lib/"
     cp -- "$source_dir/assets/openai-codex-linux-repository-key.gpg.base64" "$stage/metadata-helper/assets/"
-    # Mount and diagnose without starting another app instance.
-    "$stage/ChatGPT-Community.AppImage" --diagnose
+    # Check the same runtime mode as the menu without opening another app.
+    "$stage/ChatGPT-Community.AppImage" --appimage-extract-and-run --diagnose
     desktop_stage="$(mktemp --suffix=.desktop "$(dirname "$APPIMAGE_DESKTOP_FILE")/.codex-desktop.XXXXXX")"
     APPIMAGE_DESKTOP_STAGE="$desktop_stage"
-    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/ChatGPT-Community.AppImage" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
+    # FUSE teardown can SIGBUS surviving Chromium helpers on exit. Extract/run
+    # keeps their mapped executable pages valid while the app shuts down.
+    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/ChatGPT-Community.AppImage" --appimage-extract-and-run %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
         "$APPIMAGE_HOME" "$APPIMAGE_HOME" >"$desktop_stage"
-    chmod 644 "$desktop_stage"
+    # KDE rejects a user-owned launcher without its executable/trust flag.
+    chmod 755 "$desktop_stage"
     if command_exists desktop-file-validate; then desktop-file-validate "$desktop_stage"; fi
 
     pause_native_updater
