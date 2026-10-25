@@ -5,7 +5,10 @@
 - [x] Verify actual startup on SteamOS without removing the working native installation or using its profile.
 - [x] Publish the fix and verify the desktop installer's download before asking the user to retry (installer 2026.10.25.8; GitHub main and immutable downloads verified).
 - [x] Explain in the menu that the AppImage is built locally before installation.
-- [ ] Support keeping both installations available for testing, with distinct launchers and clear uninstall choices. AppImage startup is the immediate priority.
+
+Keeping both installations at once was cancelled by the user after successful
+AppImage startup and normal-Quit verification. Retain the existing choice of
+AppImage or standard installation, with switching replacing the previous method.
 
 Evidence (October 25): KDE rejected the actual generated launcher with the
 diagnostic "not owned by root and executable flag not set." The launcher was
