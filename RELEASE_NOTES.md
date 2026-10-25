@@ -1,5 +1,9 @@
 # Unreleased
 
+- Recognize externally installed upstream payloads and clear matching staged
+  duplicates instead of repeatedly offering the already-installed app version.
+- Display the installer's own version, release date, file timestamp, and script
+  fingerprint in the menu.
 - Refresh the reviewed upstream choice to the October 24 source revision used
   by the successful October 25 Steam Deck installation.
 - Integrate SteamOS read-only handling into the bundled automatic updater's

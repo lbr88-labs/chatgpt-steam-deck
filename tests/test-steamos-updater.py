@@ -24,6 +24,7 @@ class UpdaterTests(unittest.TestCase):
                 "main.rs": "mod install;\n",
                 "install.rs": 'run_install(&mut command).context("pacman -U failed")',
                 "install_rollback.rs": 'run_install(&mut command).context("pacman rollback install failed")',
+                "app.rs": '    let already_installed = state.installed_upstream_version.as_deref()\n',
             }
             for name, text in fixtures.items():
                 (source / name).write_text(text)
@@ -33,6 +34,12 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual(first, {p.name: p.read_text() for p in source.iterdir()})
             self.assertIn("with_writable_system", first["install.rs"])
             self.assertIn("with_writable_system", first["install_rollback.rs"])
+            self.assertIn("installed_identity::reconcile", first["app.rs"])
+            # Upgrading a previously patched updater must not duplicate modules.
+            (source / "main.rs").write_text("mod install;\nmod steamos;\n")
+            patcher.patch(root)
+            self.assertEqual((source / "main.rs").read_text().count("mod steamos;"), 1)
+            self.assertEqual((source / "main.rs").read_text().count("mod installed_identity;"), 1)
             subprocess.run(["rustc", "--edition=2021", "--test", str(source / "steamos.rs"), "-o", str(root / "test")], check=True)
             subprocess.run([str(root / "test")], check=True)
 

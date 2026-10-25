@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
+INSTALLER_VERSION='2026.10.25.2'
+INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
 REVIEWED_REF="${REVIEWED_REF:-fc533a9346095e74d47c506e3103b7282c5c54d9}"
@@ -406,7 +408,13 @@ uninstall_app() {
 }
 
 show_menu() {
+    local installer_fingerprint
+    read -r installer_fingerprint _ < <(sha256sum -- "${BASH_SOURCE[0]}")
     printf '\n%s Steam Deck helper\n\n' "$APP_NAME"
+    printf 'Installer version: %s (released %s)\n' "$INSTALLER_VERSION" "$INSTALLER_RELEASE_DATE"
+    printf 'Running script fingerprint: %.12s\n' "$installer_fingerprint"
+    printf 'Installer file downloaded/modified: %s\n' "$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
+    printf 'Source: github.com/lbr88-labs/chatgpt-steam-deck\n\n'
     printf '  1) Install or update from upstream main (default)\n'
     printf '  2) Install or update from reviewed commit %.12s\n' "$REVIEWED_REF"
     printf '  3) Uninstall\n'

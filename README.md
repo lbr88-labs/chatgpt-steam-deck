@@ -41,6 +41,8 @@ password when SteamOS needs system changes.
   It deliberately leaves the shared Codex user profile untouched.
 
 Run the same desktop file again whenever you want to update or uninstall.
+The opening menu shows the running installer's version, release date, file
+download/modification time, and a short SHA-256 fingerprint of the actual script.
 
 ## What the helper does
 
@@ -72,6 +74,11 @@ restore it whether pacman succeeds or fails. Automatic rebuilds carry forward
 the installed updater binary, including this integration. Run this desktop
 installer once to install the corrected updater; an already staged update uses
 the updater currently installed on the system.
+
+The integration also recognizes an app installed through this helper by matching
+its installed upstream version and hash against freshly verified signed metadata.
+It clears a staged duplicate of that exact payload, avoiding an unnecessary
+same-version rebuild and update notification after a manual installation.
 
 The upstream project verifies OpenAI’s signed stable APT metadata and package
 hashes, extracts only the verified data payload, and packages it independently
