@@ -17,10 +17,12 @@ STEAMOS_READONLY_BIN="${STEAMOS_READONLY_BIN:-steamos-readonly}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 PACMAN_KEYRING_FILE="${PACMAN_KEYRING_FILE:-/etc/pacman.d/gnupg/pubring.gpg}"
 DPKG_STATE_DIR="${DPKG_STATE_DIR:-/var/lib/dpkg}"
+APP_INSTALL_DIR="${APP_INSTALL_DIR:-/opt/codex-desktop}"
 CACHE_HOME="${CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck}"
 
 READONLY_INITIAL=''
 READONLY_CHANGED=0
+ORPHANED_APP_BACKUP=''
 
 info() {
     printf '\033[1;34m[installer]\033[0m %s\n' "$*" >&2
@@ -101,6 +103,11 @@ restore_readonly() {
         run_root "$STEAMOS_READONLY_BIN" enable || warn 'Could not restore read-only mode automatically. Run: sudo steamos-readonly enable'
         READONLY_CHANGED=0
     fi
+}
+
+cleanup() {
+    restore_orphaned_app_tree || true
+    restore_readonly
 }
 
 ensure_pacman_keyring() {
@@ -203,6 +210,79 @@ recover_stale_dpkg_state() {
     info "Preserved the stale dpkg state at $backup_dir."
 }
 
+recover_orphaned_app_tree() {
+    local query_output query_status backup_dir
+
+    if query_output="$(LC_ALL=C "$PACMAN_BIN" -Qq "$PACKAGE_NAME" 2>&1)"; then
+        if [[ "$query_output" != "$PACKAGE_NAME" ]]; then
+            die "Unexpected pacman result while checking $PACKAGE_NAME."
+            return 1
+        fi
+        return 0
+    else
+        query_status=$?
+    fi
+    if [[ "$query_status" -ne 1 || "$query_output" != "error: package '$PACKAGE_NAME' was not found" ]]; then
+        die "Could not verify whether $PACKAGE_NAME is installed; refusing automatic recovery."
+        return 1
+    fi
+
+    [[ -e "$APP_INSTALL_DIR" || -L "$APP_INSTALL_DIR" ]] || return 0
+    if [[ -L "$APP_INSTALL_DIR" || ! -d "$APP_INSTALL_DIR" ]]; then
+        die "Refusing to alter a non-directory application path at $APP_INSTALL_DIR."
+        return 1
+    fi
+
+    if query_output="$(LC_ALL=C "$PACMAN_BIN" -Qo "$APP_INSTALL_DIR" 2>&1)"; then
+        die "Refusing to alter a package-owned application tree at $APP_INSTALL_DIR."
+        return 1
+    else
+        query_status=$?
+    fi
+    if [[ "$query_status" -ne 1 || "$query_output" != "error: No package owns $APP_INSTALL_DIR" ]]; then
+        die "Could not verify package ownership for $APP_INSTALL_DIR; refusing automatic recovery."
+        return 1
+    fi
+
+    if ! backup_dir="$(run_root mktemp -d "${APP_INSTALL_DIR}.chatgpt-steam-deck.XXXXXX")"; then
+        die 'Could not allocate a protected application recovery path.'
+        return 1
+    fi
+    case "$backup_dir" in
+        "${APP_INSTALL_DIR}.chatgpt-steam-deck."*) ;;
+        *)
+            die "Refusing unexpected application recovery path: $backup_dir"
+            return 1
+            ;;
+    esac
+    if ! run_root rmdir -- "$backup_dir"; then
+        die "Could not prepare protected application recovery path at $backup_dir."
+        return 1
+    fi
+
+    info 'Preserving the application tree orphaned by a SteamOS upgrade.'
+    if ! run_root mv -T -- "$APP_INSTALL_DIR" "$backup_dir"; then
+        die "Could not preserve the orphaned application tree at $backup_dir."
+        return 1
+    fi
+    ORPHANED_APP_BACKUP="$backup_dir"
+    info "Preserved the orphaned application tree at $backup_dir."
+}
+
+restore_orphaned_app_tree() {
+    [[ -n "$ORPHANED_APP_BACKUP" ]] || return 0
+    if [[ -e "$APP_INSTALL_DIR" || -L "$APP_INSTALL_DIR" ]]; then
+        warn "Could not restore the previous application tree automatically; it remains at $ORPHANED_APP_BACKUP."
+        return 1
+    fi
+    info 'Restoring the previous application tree after installation failure.'
+    if ! run_root mv -T -- "$ORPHANED_APP_BACKUP" "$APP_INSTALL_DIR"; then
+        warn "Could not restore the previous application tree automatically; it remains at $ORPHANED_APP_BACKUP."
+        return 1
+    fi
+    ORPHANED_APP_BACKUP=''
+}
+
 check_disk_space() {
     local available_kib required_kib=$((6 * 1024 * 1024))
     available_kib="$(df -Pk "$CACHE_HOME" 2>/dev/null | awk 'NR == 2 {print $4}')"
@@ -283,8 +363,17 @@ install_or_update() {
     (cd "$source_dir" && bash scripts/install-deps.sh)
     ensure_rust_toolchain
 
-    info "Building and installing $APP_NAME. This can take several minutes."
-    (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" "$MAKE_BIN" install-native)
+    info "Building $APP_NAME. This can take several minutes."
+    (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" \
+        "$MAKE_BIN" build-native-feature-helpers build-app package)
+
+    recover_orphaned_app_tree
+    info "Installing $APP_NAME."
+    if ! (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" "$MAKE_BIN" install); then
+        restore_orphaned_app_tree || true
+        return 1
+    fi
+    ORPHANED_APP_BACKUP=''
     info "$APP_NAME is installed. Find it in the application launcher under Internet."
 }
 
@@ -316,7 +405,7 @@ show_menu() {
 
 main() {
     local choice
-    trap restore_readonly EXIT
+    trap cleanup EXIT
     trap 'exit 130' INT TERM
 
     show_menu

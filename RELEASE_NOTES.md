@@ -5,6 +5,11 @@
 - Preserve recovered state in a protected system recovery directory and refuse
   automatic changes when the dpkg directory contains data or unexpected
   entries.
+- Recover when SteamOS forgets the installed `codex-desktop` package but leaves
+  its unowned application tree behind, while preserving the old tree until the
+  replacement is ready to install.
+- Restore the preserved application tree automatically if package installation
+  fails before creating its replacement.
 
 # Steam Deck installer v1.0.0
 

@@ -56,6 +56,14 @@ adjacent protected recovery directory under `/var/lib` so pacman can
 reinstall `dpkg` normally. Nonempty state, package-owned files, symbolic links,
 or any unexpected entry are never moved automatically.
 
+A SteamOS upgrade can also forget the installed `codex-desktop` package while
+leaving its application files under `/opt`. The helper builds the replacement
+first, then preserves that exact unowned application tree immediately before
+installation so pacman can register the new package normally. If installation
+fails before creating the replacement, the previous tree is restored. A
+registered or package-owned installation is never moved and is upgraded in
+place by pacman as usual.
+
 The upstream project verifies OpenAI’s signed stable APT metadata and package
 hashes, extracts only the verified data payload, and packages it independently
 as `codex-desktop`. This helper does not disable those checks, execute OpenAI

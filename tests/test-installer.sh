@@ -384,6 +384,136 @@ test_dpkg_recovery_refuses_newline_filename() {
     SUDO_BIN=sudo
 }
 
+test_orphaned_app_tree_recovery() {
+    local app_dir="$TEST_TMP/codex-desktop"
+    local fake_pacman="$TEST_TMP/pacman-orphaned-app"
+    mkdir -p "$app_dir"
+    printf 'old app\n' >"$app_dir/version"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ] && [ "$2" = codex-desktop ]; then' \
+        '    printf "error: package '\''codex-desktop'\'' was not found\\n" >&2' \
+        '    exit 1' \
+        'fi' \
+        'if [ "$1" = -Qo ]; then' \
+        '    printf "error: No package owns %s\\n" "$2" >&2' \
+        '    exit 1' \
+        'fi' \
+        'exit 2' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    APP_INSTALL_DIR="$app_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    recover_orphaned_app_tree
+
+    if [[ ! -e "$app_dir" ]]; then
+        pass 'orphaned application tree is removed from the package target path'
+    else
+        fail 'orphaned application tree is removed from the package target path'
+    fi
+
+    local backup_dir
+    backup_dir="$(find "$TEST_TMP" -mindepth 1 -maxdepth 1 -type d -name 'codex-desktop.chatgpt-steam-deck.*' -print -quit)"
+    if [[ -n "$backup_dir" && "$(cat "$backup_dir/version")" == 'old app' ]]; then
+        pass 'orphaned application tree is preserved beside the install path'
+    else
+        fail 'orphaned application tree is preserved beside the install path'
+    fi
+
+    APP_INSTALL_DIR=/opt/codex-desktop
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_registered_app_tree_is_not_recovered() {
+    local app_dir="$TEST_TMP/registered-codex-desktop"
+    local fake_pacman="$TEST_TMP/pacman-registered-app"
+    mkdir -p "$app_dir"
+    printf 'installed app\n' >"$app_dir/version"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ] && [ "$2" = codex-desktop ]; then' \
+        '    printf "codex-desktop\\n"' \
+        '    exit 0' \
+        'fi' \
+        'exit 2' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    APP_INSTALL_DIR="$app_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+
+    recover_orphaned_app_tree
+
+    if [[ "$(cat "$app_dir/version")" == 'installed app' ]]; then
+        pass 'registered application tree remains in place'
+    else
+        fail 'registered application tree remains in place'
+    fi
+
+    APP_INSTALL_DIR=/opt/codex-desktop
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+}
+
+test_orphaned_app_tree_restore_after_install_failure() {
+    local app_dir="$TEST_TMP/restore-codex-desktop"
+    local fake_pacman="$TEST_TMP/pacman-restore-app"
+    mkdir -p "$app_dir"
+    printf 'working old app\n' >"$app_dir/version"
+    printf '%s\n' \
+        '#!/bin/sh' \
+        'if [ "$1" = -Qq ]; then' \
+        '    printf "error: package '\''codex-desktop'\'' was not found\\n" >&2' \
+        '    exit 1' \
+        'fi' \
+        'printf "error: No package owns %s\\n" "$2" >&2' \
+        'exit 1' >"$fake_pacman"
+    chmod +x "$fake_pacman"
+
+    APP_INSTALL_DIR="$app_dir"
+    PACMAN_BIN="$fake_pacman"
+    SUDO_BIN=env
+    ORPHANED_APP_BACKUP=''
+
+    recover_orphaned_app_tree
+    restore_orphaned_app_tree
+
+    if [[ "$(cat "$app_dir/version")" == 'working old app' ]]; then
+        pass 'failed installation restores the preserved application tree'
+    else
+        fail 'failed installation restores the preserved application tree'
+    fi
+
+    APP_INSTALL_DIR=/opt/codex-desktop
+    PACMAN_BIN=pacman
+    SUDO_BIN=sudo
+    ORPHANED_APP_BACKUP=''
+}
+
+test_cleanup_restores_orphaned_app_tree() {
+    local app_dir="$TEST_TMP/cleanup-codex-desktop"
+    local backup_dir="$TEST_TMP/cleanup-codex-desktop.chatgpt-steam-deck.saved"
+    mkdir -p "$backup_dir"
+    printf 'working old app\n' >"$backup_dir/version"
+
+    APP_INSTALL_DIR="$app_dir"
+    ORPHANED_APP_BACKUP="$backup_dir"
+    SUDO_BIN=env
+
+    if cleanup && [[ "$(cat "$app_dir/version")" == 'working old app' ]]; then
+        pass 'exit cleanup restores a preserved application tree'
+    else
+        fail 'exit cleanup restores a preserved application tree'
+    fi
+
+    APP_INSTALL_DIR=/opt/codex-desktop
+    ORPHANED_APP_BACKUP=''
+    SUDO_BIN=sudo
+}
+
 test_uninstall_cancellation() {
     local log="$TEST_TMP/sudo-log"
     local fake="$TEST_TMP/sudo"
@@ -465,6 +595,10 @@ test_dpkg_recovery_refuses_unexpected_entries
 test_dpkg_recovery_refuses_symlinked_state_directory
 test_dpkg_recovery_refuses_pacman_query_errors
 test_dpkg_recovery_refuses_newline_filename
+test_orphaned_app_tree_recovery
+test_registered_app_tree_is_not_recovered
+test_orphaned_app_tree_restore_after_install_failure
+test_cleanup_restores_orphaned_app_tree
 test_uninstall_cancellation
 test_desktop_launcher
 test_release_packaging
