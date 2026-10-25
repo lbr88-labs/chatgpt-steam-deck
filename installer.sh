@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_NAME='ChatGPT Community'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
-REVIEWED_REF="${REVIEWED_REF:-1875dc2eaab6f9448617d18d0eda58902edf0f1a}"
+REVIEWED_REF="${REVIEWED_REF:-fc533a9346095e74d47c506e3103b7282c5c54d9}"
 
 CURL_BIN="${CURL_BIN:-curl}"
 MAKE_BIN="${MAKE_BIN:-make}"

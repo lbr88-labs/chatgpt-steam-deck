@@ -56,8 +56,8 @@ test_source_urls() {
 
     assert_eq \
         'reviewed commit resolves to an immutable upstream archive' \
-        'https://github.com/ilysenko/codex-desktop-linux/archive/1875dc2eaab6f9448617d18d0eda58902edf0f1a.tar.gz' \
-        "$(resolve_archive_url 1875dc2eaab6f9448617d18d0eda58902edf0f1a)"
+        'https://github.com/ilysenko/codex-desktop-linux/archive/fc533a9346095e74d47c506e3103b7282c5c54d9.tar.gz' \
+        "$(resolve_archive_url "$REVIEWED_REF")"
 }
 
 test_progress_output_does_not_corrupt_results() {

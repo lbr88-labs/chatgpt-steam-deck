@@ -1,5 +1,7 @@
 # Unreleased
 
+- Refresh the reviewed upstream choice to the October 24 source revision used
+  by the successful October 25 Steam Deck installation.
 - Integrate SteamOS read-only handling into the bundled automatic updater's
   privileged pacman installation and rollback paths, preserving the initial
   read-only state after successful or failed package transactions.

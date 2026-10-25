@@ -35,7 +35,8 @@ password when SteamOS needs system changes.
 - **Install or update from upstream main** — recommended default; downloads the
   current source from `ilysenko/codex-desktop-linux`.
 - **Install or update from reviewed commit** — uses the source revision reviewed
-  when this helper release was prepared.
+  after the successful Steam Deck installation on October 25, 2026
+  (`fc533a9346095e74d47c506e3103b7282c5c54d9`).
 - **Uninstall** — removes the `codex-desktop` system package after confirmation.
   It deliberately leaves the shared Codex user profile untouched.
 
