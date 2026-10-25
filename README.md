@@ -23,11 +23,12 @@ the related Decky repository installs only the Quick Access integration.
 4. If SteamOS asks, right-click the file, choose **Properties → Permissions**,
    enable **Is executable**, and select **OK**.
 5. Double-click the file and choose **Execute**.
-6. In the dialog, select **Install or update — latest build method** and click
+6. Close ChatGPT Community if it is running. In the dialog, select the first
+   **AppImage** option and click
    **Continue**.
 
 Keep the terminal open while it works. A fresh build can take several minutes,
-uses roughly 6 GiB of temporary/build space, and asks for the Deck user’s sudo
+uses at least 6 GiB of temporary/build space (plus the reusable build environment), and asks for the Deck user’s sudo
 password in a graphical popup when SteamOS needs system changes. The menu,
 uninstall confirmation, and completion/error messages are clickable dialogs;
 the terminal remains visible for build output. Outside a graphical desktop,
@@ -35,14 +36,24 @@ the installer falls back to its terminal menu.
 
 ## Menu choices
 
-- **Install or update — latest build method** — default; uses the newest build
-  code, including recent fixes that may not yet be tested on Steam Deck.
-- **Install or update — tested build method** — uses the source revision reviewed
+- **Install or update — AppImage** — default. Builds in a reusable Distrobox
+  environment and installs in your home folder, together with its application
+  menu entry. Normal SteamOS upgrades preserve both. Run this installer again
+  to update it; AppImage deliberately has no automatic updater. The finished app
+  runs directly on SteamOS, outside the build container, without an added runtime
+  sandbox.
+- **Standard installation — tested build code** — retains the original pacman
+  installation with the automatic updater, using the source revision reviewed
   after the successful Steam Deck installation on October 25, 2026
   (`fc533a9346095e74d47c506e3103b7282c5c54d9`).
-- Both choices install the current stable app. The choice changes the code used
-  to build and package it, not the app release channel.
-- **Uninstall** — removes the `codex-desktop` system package after confirmation.
+- **Standard installation — latest build code** — uses the newest packaging
+  fixes, including changes that may not yet be tested on Steam Deck.
+- All choices install the current stable app. When another method is already
+  installed, the option explicitly says that it will switch methods and remove
+  the old installation. The replacement is built and checked first. Switching
+  to AppImage disables the native automatic updater; switching back reinstalls
+  the native package and enables its updater.
+- **Uninstall** — removes the currently installed method after confirmation.
   It deliberately leaves the shared Codex user profile untouched.
 
 Run the same desktop file again whenever you want to update or uninstall.
@@ -54,11 +65,20 @@ and verifies the target during installation instead.
 
 ## What the helper does
 
-The helper downloads the upstream source automatically, temporarily disables
+For the standard method, the helper downloads the upstream source automatically, temporarily disables
 SteamOS read-only mode, initializes the signed Arch/SteamOS pacman keyring when
 necessary, installs build dependencies, and invokes the upstream project’s
 native installer. It restores the Deck’s original read-only state on success,
 failure, or interruption.
+
+The AppImage method uses SteamOS's Distrobox and Podman tools to keep build
+dependencies in a container. Its app and metadata live under
+`~/.local/share/chatgpt-community-appimage/`; its persistent menu entry is
+`~/.local/share/applications/codex-desktop.desktop`. The installer validates the
+finished AppImage on the host before switching, retains the previous AppImage
+for rollback, and restores the previous app/menu if removing the native package
+fails. It never removes the shared Codex profile or credentials. The app must be
+closed before installation, update, switching, or removal.
 
 SteamOS upgrades can remove the locally installed `dpkg` package while leaving
 its two empty state files behind. Before reinstalling build dependencies, the
@@ -75,7 +95,7 @@ fails before creating the replacement, the previous tree is restored. A
 registered or package-owned installation is never moved and is upgraded in
 place by pacman as usual.
 
-The app package includes upstream's automatic updater. Before building, this
+The standard app package includes upstream's automatic updater. Before building, this
 helper applies a small SteamOS integration to its privileged installation and
 rollback paths: temporarily disable read-only mode only when enabled, then
 restore it whether pacman succeeds or fails. Automatic rebuilds carry forward
@@ -109,8 +129,8 @@ maintainer scripts, or treat a `latest` URL as a package trust root.
 
 ## Manual removal
 
-The menu is the easiest removal method. From a terminal, the equivalent command
-is:
+The menu is the easiest removal method for either installation type. For a
+standard system package, the terminal equivalent is:
 
 ```bash
 sudo steamos-readonly disable

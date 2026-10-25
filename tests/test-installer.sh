@@ -574,6 +574,10 @@ test_gui_reviewed_choice() {
         ZENITY_BIN="$fake_zenity"
         CACHE_HOME="$TEST_TMP/gui-choice-cache"
         load_version_summary() { :; }
+        load_appimage_support() {
+            source "$ROOT_DIR/scripts/appimage-mode.sh"
+            wait_for_app_exit() { :; }
+        }
         install_or_update() { printf '%s' "$1"; }
         main </dev/null
     )"

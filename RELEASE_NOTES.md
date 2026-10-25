@@ -1,5 +1,15 @@
 # Unreleased
 
+- Make AppImage the first installation/update choice, built in a reusable
+  rootless Distrobox environment and run directly on the host without a runtime
+  container or additional sandbox. AppImage updates use this installer.
+- Keep tested/latest native package methods and support switching both ways.
+  Explain the removal in the selected option, build and check the replacement
+  first, preserve the shared profile, and restore AppImage/menu state on failure.
+- Keep the AppImage and application-menu entry in the user's home directory so
+  normal SteamOS updates preserve them. Disable the native updater for AppImage.
+- Ask users to close the app before any installation change, and reject native
+  package changes while another pacman transaction is running.
 - Use clickable Zenity dialogs for the action menu, uninstall confirmation, and
   completion/error messages on the desktop; retain terminal build output.
 - Route sudo authentication, including upstream scripts, through a graphical

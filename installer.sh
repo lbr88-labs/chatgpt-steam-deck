@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.5'
+INSTALLER_VERSION='2026.10.25.6'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -32,12 +32,15 @@ CURRENT_APP_VERSION='Not installed'
 TARGET_APP_VERSION='Unavailable; checked during installation'
 
 load_version_summary() {
-    local builder metadata_dir
-    if [[ -f /opt/codex-desktop/resources/codex-linux-build-info.json ]] && command_exists python3; then
-        CURRENT_APP_VERSION="$(python3 -c 'import json; print(json.load(open("/opt/codex-desktop/resources/codex-linux-build-info.json")).get("upstreamLinuxPackage", {}).get("version", "Unknown"))' 2>/dev/null)" || CURRENT_APP_VERSION=Unknown
+    local builder metadata_dir build_info=/opt/codex-desktop/resources/codex-linux-build-info.json
+    if [[ -n "${APPIMAGE_HOME:-}" ]] && appimage_is_installed; then
+        build_info="$APPIMAGE_HOME/build-info.json"
+    fi
+    if [[ -f "$build_info" ]] && command_exists python3; then
+        CURRENT_APP_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("upstreamLinuxPackage", {}).get("version", "Unknown"))' "$build_info" 2>/dev/null)" || CURRENT_APP_VERSION=Unknown
     fi
     command_exists node && command_exists timeout && command_exists python3 || return 0
-    for builder in /opt/codex-desktop/update-builder "$CACHE_HOME/upstream-main"; do
+    for builder in "${APPIMAGE_HOME:-$CACHE_HOME/no-appimage}/metadata-helper" /opt/codex-desktop/update-builder "$CACHE_HOME/upstream-main"; do
         if [[ -f "$builder/scripts/lib/upstream-linux-package.js" && -f "$builder/assets/openai-codex-linux-repository-key.gpg.base64" ]]; then
             mkdir -p "$CACHE_HOME"
             metadata_dir="$(mktemp -d "$CACHE_HOME/.version-check.XXXXXX")"
@@ -137,6 +140,9 @@ restore_readonly() {
 
 cleanup() {
     restore_orphaned_app_tree || true
+    if declare -F cleanup_installation_mode >/dev/null; then
+        cleanup_installation_mode
+    fi
     restore_readonly
     if [[ -n "$GUI_AUTH_DIR" ]]; then
         safe_remove_cache_path "$GUI_AUTH_DIR"
@@ -163,11 +169,12 @@ choose_gui_action() {
     read -r fingerprint _ < <(sha256sum -- "${BASH_SOURCE[0]}")
     downloaded="$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     "$ZENITY_BIN" --list --radiolist --title='ChatGPT Community — Steam Deck Installer' \
-        --width=800 --height=560 --hide-column=2 --print-column=2 \
-        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed app: $CURRENT_APP_VERSION\nApp version to install: $TARGET_APP_VERSION\n\nLatest build method: newest fixes, but recent changes may not be tested on Steam Deck.\nTested build method: code confirmed working on Steam Deck on October 25, 2026.\nBoth choices install the current stable app; only the code used to build it differs.\n\nSelect an action. Build output remains visible in the terminal." \
+        --width=850 --height=600 --hide-column=2 --print-column=2 \
+        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed: $CURRENT_APP_VERSION ($INSTALLATION_MODE)\nApp version to install: $TARGET_APP_VERSION\n\nAppImage: kept in your home folder, survives normal SteamOS updates.\nUpdate it by running this installer again; no automatic updater.\nStandard: the original system-package method, with its automatic updater.\nTested build code was confirmed working on October 25; latest may include untested changes.\n\nSwitching methods removes the old installation after the replacement is ready.\nYour chats and settings are kept. Both methods install the current stable app." \
         --column='Select' --column='Action' --column='What to do' \
-        TRUE 1 'Install or update — latest build method' \
-        FALSE 2 'Install or update — tested build method' \
+        TRUE 1 "$APPIMAGE_ACTION" \
+        FALSE 2 "$NATIVE_ACTION (tested build code)" \
+        FALSE 5 "$NATIVE_ACTION (latest build code)" \
         FALSE 3 'Uninstall the app (keep your profile)' \
         --ok-label='Continue' --cancel-label='Close'
 }
@@ -422,6 +429,7 @@ patch_steamos_updater() {
 install_or_update() {
     local ref="$1" source_dir
     validate_platform
+    ensure_package_manager_idle
     require_commands "$CURL_BIN" "$TAR_BIN" "$SUDO_BIN" "$PACMAN_BIN"
     mkdir -p "$CACHE_HOME"
     source_dir="$(download_source "$ref")"
@@ -440,6 +448,8 @@ install_or_update() {
     (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" \
         "$MAKE_BIN" build-native-feature-helpers build-app package)
 
+    if appimage_is_installed; then wait_for_app_exit; fi
+    ensure_package_manager_idle
     recover_orphaned_app_tree
     info "Installing $APP_NAME."
     if ! (cd "$source_dir" && PATH="$HOME/.cargo/bin:$PATH" "$MAKE_BIN" install); then
@@ -447,6 +457,9 @@ install_or_update() {
         return 1
     fi
     ORPHANED_APP_BACKUP=''
+    remove_appimage_installation
+    systemctl --user enable --now codex-update-manager.service || warn 'Could not enable the automatic updater.'
+    MODE_COMMITTED=1
     info "$APP_NAME is installed. Find it in the application launcher under Internet."
 }
 
@@ -466,6 +479,13 @@ uninstall_app() {
     case "$answer" in
         y|Y|yes|YES)
             validate_platform
+            wait_for_app_exit
+            if appimage_is_installed; then
+                remove_appimage_installation
+                info 'AppImage removed. Your chats and settings were kept.'
+                return 0
+            fi
+            ensure_package_manager_idle
             require_commands "$SUDO_BIN" "$PACMAN_BIN"
             capture_readonly_state
             ensure_writable_system
@@ -485,14 +505,28 @@ show_menu() {
     printf 'Installer file downloaded/modified: %s\n' "$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     printf 'Source: github.com/lbr88-labs/chatgpt-steam-deck\n\n'
     printf 'Currently installed app: %s\nTarget app (signed stable): %s\n\n' "$CURRENT_APP_VERSION" "$TARGET_APP_VERSION"
-    printf '  1) Install or update — latest build method (default)\n'
-    printf '     Newest fixes; recent changes may not be tested on Steam Deck.\n'
-    printf '  2) Install or update — tested build method\n'
-    printf '     Confirmed working on Steam Deck on October 25, 2026 (%.12s).\n' "$REVIEWED_REF"
-    printf '  Both choices install the current stable app.\n\n'
+    printf 'Current installation method: %s\n' "$INSTALLATION_MODE"
+    printf '  1) %s (default)\n' "$APPIMAGE_ACTION"
+    printf '     Stored in your home folder; update by rerunning this installer.\n'
+    printf '  2) %s — tested build code (%.12s)\n' "$NATIVE_ACTION" "$REVIEWED_REF"
+    printf '  5) %s — latest build code\n' "$NATIVE_ACTION"
+    printf 'Switching methods removes the old installation; your chats and settings are kept.\n\n'
     printf '  3) Uninstall\n'
     printf '  4) Exit\n\n'
     printf 'Choose [1]: '
+}
+
+load_appimage_support() {
+    local local_script="${BASH_SOURCE[0]%/*}/scripts/appimage-mode.sh"
+    if [[ -f "$local_script" ]]; then
+        source "$local_script"
+    else
+        mkdir -p "$CACHE_HOME"
+        "$CURL_BIN" --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "$CACHE_HOME/appimage-mode.sh" \
+            "https://raw.githubusercontent.com/lbr88-labs/chatgpt-steam-deck/${CHATGPT_INSTALLER_REF:-refs/heads/main}/scripts/appimage-mode.sh?ts=$(date +%s)"
+        source "$CACHE_HOME/appimage-mode.sh"
+    fi
 }
 
 main() {
@@ -500,12 +534,15 @@ main() {
     trap cleanup EXIT
     trap 'exit 130' INT TERM
 
+    load_appimage_support
+    detect_installation_mode
     load_version_summary
     if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command_exists "$ZENITY_BIN"; then
         GUI_MODE=1
         choice="$(choose_gui_action)" || choice=4
         [[ -n "$choice" ]] || choice=4
         if [[ "$choice" != 4 ]]; then
+            wait_for_app_exit || return 0
             configure_gui_auth
         fi
     else
@@ -513,12 +550,16 @@ main() {
         read -r choice || choice='4'
     fi
     choice="${choice:-1}"
+    if [[ "$GUI_MODE" -eq 0 && "$choice" != 4 ]]; then
+        wait_for_app_exit || return 0
+    fi
     case "$choice" in
-        1) install_or_update main ;;
+        1) install_appimage ;;
         2) install_or_update "$REVIEWED_REF" ;;
         3) uninstall_app ;;
         4) info 'No changes made.' ;;
-        *) die 'Choose 1, 2, 3, or 4.' ;;
+        5) install_or_update main ;;
+        *) die 'Choose 1, 2, 3, 4, or 5.' ;;
     esac
     if [[ "$GUI_MODE" -eq 1 && "$choice" != 4 ]]; then
         "$ZENITY_BIN" --info --title='ChatGPT Community Installer' \
