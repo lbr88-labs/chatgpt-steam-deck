@@ -23,12 +23,15 @@ the related Decky repository installs only the Quick Access integration.
 4. If SteamOS asks, right-click the file, choose **Properties → Permissions**,
    enable **Is executable**, and select **OK**.
 5. Double-click the file and choose **Execute**.
-6. In the terminal menu, press Enter for the default **install or update from
-   upstream main** option.
+6. In the dialog, select **install or update from upstream main** and click
+   **Continue**.
 
 Keep the terminal open while it works. A fresh build can take several minutes,
 uses roughly 6 GiB of temporary/build space, and asks for the Deck user’s sudo
-password when SteamOS needs system changes.
+password in a graphical popup when SteamOS needs system changes. The menu,
+uninstall confirmation, and completion/error messages are clickable dialogs;
+the terminal remains visible for build output. Outside a graphical desktop,
+the installer falls back to its terminal menu.
 
 ## Menu choices
 
@@ -43,6 +46,9 @@ password when SteamOS needs system changes.
 Run the same desktop file again whenever you want to update or uninstall.
 The opening menu shows the running installer's version, release date, file
 download/modification time, and a short SHA-256 fingerprint of the actual script.
+It also shows the installed upstream app version and the target version from
+verified signed stable metadata. If a version check is unavailable, it says so
+and verifies the target during installation instead.
 
 ## What the helper does
 

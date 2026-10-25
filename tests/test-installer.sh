@@ -532,6 +532,54 @@ SCRIPT
     SUDO_BIN=sudo
 }
 
+test_gui_auth_and_cancel() {
+    local fake_zenity="$TEST_TMP/gui-zenity" fake_sudo="$TEST_TMP/gui-sudo"
+    printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' >"$fake_sudo"
+    printf '#!/bin/sh\nexit 1\n' >"$fake_zenity"
+    chmod +x "$fake_sudo" "$fake_zenity"
+
+    local args
+    args="$(
+        CACHE_HOME="$TEST_TMP/gui-cache"
+        SUDO_BIN="$fake_sudo"
+        ZENITY_BIN="$fake_zenity"
+        load_version_summary() { :; }
+        configure_gui_auth
+        sudo --version
+        cleanup
+    )"
+    assert_eq 'upstream sudo calls use graphical authentication' $'-A\n--version' "$args"
+
+    if (
+        DISPLAY=:test
+        ZENITY_BIN="$fake_zenity"
+        load_version_summary() { :; }
+        install_or_update() { return 99; }
+        uninstall_app() { return 99; }
+        main </dev/null
+    ) >/dev/null; then
+        pass 'closing the dialog cancels without a keyboard or installation'
+    else
+        fail 'closing the dialog cancels without a keyboard or installation'
+    fi
+}
+
+test_gui_reviewed_choice() {
+    local fake_zenity="$TEST_TMP/gui-menu"
+    printf '#!/bin/sh\nif [ "$1" = --list ]; then printf "2\\n"; fi\n' >"$fake_zenity"
+    chmod +x "$fake_zenity"
+    local selected
+    selected="$(
+        DISPLAY=:test
+        ZENITY_BIN="$fake_zenity"
+        CACHE_HOME="$TEST_TMP/gui-choice-cache"
+        load_version_summary() { :; }
+        install_or_update() { printf '%s' "$1"; }
+        main </dev/null
+    )"
+    assert_eq 'clicking reviewed choice selects the pinned revision without terminal input' "$REVIEWED_REF" "$selected"
+}
+
 test_desktop_launcher() {
     local desktop_file="$ROOT_DIR/Install ChatGPT Community.desktop"
     if [[ ! -f "$desktop_file" ]]; then
@@ -600,6 +648,8 @@ test_registered_app_tree_is_not_recovered
 test_orphaned_app_tree_restore_after_install_failure
 test_cleanup_restores_orphaned_app_tree
 test_uninstall_cancellation
+test_gui_auth_and_cancel
+test_gui_reviewed_choice
 test_desktop_launcher
 test_release_packaging
 

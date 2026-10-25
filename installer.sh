@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.2'
+INSTALLER_VERSION='2026.10.25.3'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -13,6 +13,7 @@ MAKE_BIN="${MAKE_BIN:-make}"
 PACMAN_BIN="${PACMAN_BIN:-pacman}"
 PACMAN_KEY_BIN="${PACMAN_KEY_BIN:-pacman-key}"
 SUDO_BIN="${SUDO_BIN:-sudo}"
+ZENITY_BIN="${ZENITY_BIN:-zenity}"
 TAR_BIN="${TAR_BIN:-tar}"
 UNAME_BIN="${UNAME_BIN:-uname}"
 STEAMOS_READONLY_BIN="${STEAMOS_READONLY_BIN:-steamos-readonly}"
@@ -25,6 +26,33 @@ CACHE_HOME="${CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-steam-deck}"
 READONLY_INITIAL=''
 READONLY_CHANGED=0
 ORPHANED_APP_BACKUP=''
+GUI_MODE=0
+GUI_AUTH_DIR=''
+CURRENT_APP_VERSION='Not installed'
+TARGET_APP_VERSION='Unavailable; checked during installation'
+
+load_version_summary() {
+    local builder metadata_dir
+    if [[ -f /opt/codex-desktop/resources/codex-linux-build-info.json ]] && command_exists python3; then
+        CURRENT_APP_VERSION="$(python3 -c 'import json; print(json.load(open("/opt/codex-desktop/resources/codex-linux-build-info.json")).get("upstreamLinuxPackage", {}).get("version", "Unknown"))' 2>/dev/null)" || CURRENT_APP_VERSION=Unknown
+    fi
+    command_exists node && command_exists timeout && command_exists python3 || return 0
+    for builder in /opt/codex-desktop/update-builder "$CACHE_HOME/upstream-main"; do
+        if [[ -f "$builder/scripts/lib/upstream-linux-package.js" && -f "$builder/assets/openai-codex-linux-repository-key.gpg.base64" ]]; then
+            mkdir -p "$CACHE_HOME"
+            metadata_dir="$(mktemp -d "$CACHE_HOME/.version-check.XXXXXX")"
+            info 'Checking the signed upstream app version for the installer dialog.'
+            if timeout 20 node "$builder/scripts/lib/upstream-linux-package.js" \
+                --output-dir "$metadata_dir" --metadata "$metadata_dir/package.json" \
+                --key-base64 "$builder/assets/openai-codex-linux-repository-key.gpg.base64" \
+                --arch amd64 --metadata-only >/dev/null; then
+                TARGET_APP_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$metadata_dir/package.json")"
+            fi
+            safe_remove_cache_path "$metadata_dir"
+            break
+        fi
+    done
+}
 
 info() {
     printf '\033[1;34m[installer]\033[0m %s\n' "$*" >&2
@@ -110,6 +138,38 @@ restore_readonly() {
 cleanup() {
     restore_orphaned_app_tree || true
     restore_readonly
+    if [[ -n "$GUI_AUTH_DIR" ]]; then
+        safe_remove_cache_path "$GUI_AUTH_DIR"
+    fi
+}
+
+configure_gui_auth() {
+    local real_sudo real_zenity
+    real_sudo="$(command -v "$SUDO_BIN")"
+    real_zenity="$(command -v "$ZENITY_BIN")"
+    mkdir -p "$CACHE_HOME"
+    GUI_AUTH_DIR="$(mktemp -d "$CACHE_HOME/.gui-auth.XXXXXX")"
+    printf '#!/usr/bin/env bash\nexec %q --password --title="ChatGPT Community — Administrator Password" --text="${1:-Enter your administrator password}"\n' \
+        "$real_zenity" >"$GUI_AUTH_DIR/askpass"
+    printf '#!/usr/bin/env bash\nexec %q -A "$@"\n' "$real_sudo" >"$GUI_AUTH_DIR/sudo"
+    chmod 700 "$GUI_AUTH_DIR/askpass" "$GUI_AUTH_DIR/sudo"
+    export SUDO_ASKPASS="$GUI_AUTH_DIR/askpass"
+    export PATH="$GUI_AUTH_DIR:$PATH"
+    SUDO_BIN="$GUI_AUTH_DIR/sudo"
+}
+
+choose_gui_action() {
+    local fingerprint downloaded
+    read -r fingerprint _ < <(sha256sum -- "${BASH_SOURCE[0]}")
+    downloaded="$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
+    "$ZENITY_BIN" --list --radiolist --title='ChatGPT Community — Steam Deck Installer' \
+        --width=760 --height=460 --hide-column=2 --print-column=2 \
+        --text="Installer $INSTALLER_VERSION • released $INSTALLER_RELEASE_DATE\nDownloaded/modified: $downloaded • script ${fingerprint:0:12}\n\nCurrently installed app: $CURRENT_APP_VERSION\nTarget app (signed stable): $TARGET_APP_VERSION\n\nSelect an action. Build output remains visible in the terminal." \
+        --column='Select' --column='Action' --column='What to do' \
+        TRUE 1 'Install or update from upstream main' \
+        FALSE 2 "Install or update from reviewed commit ${REVIEWED_REF:0:12}" \
+        FALSE 3 'Uninstall the app (keep your profile)' \
+        --ok-label='Continue' --cancel-label='Close'
 }
 
 ensure_pacman_keyring() {
@@ -392,8 +452,17 @@ install_or_update() {
 
 uninstall_app() {
     local answer
-    printf 'Remove %s and its package-managed files? [y/N] ' "$APP_NAME"
-    read -r answer || answer=''
+    if [[ "$GUI_MODE" -eq 1 ]]; then
+        answer=n
+        if "$ZENITY_BIN" --question --title='Remove ChatGPT Community?' \
+            --text='Remove the app and its package-managed files? Your profile will be kept.' \
+            --ok-label='Uninstall' --cancel-label='Keep installed'; then
+            answer=y
+        fi
+    else
+        printf 'Remove %s and its package-managed files? [y/N] ' "$APP_NAME"
+        read -r answer || answer=''
+    fi
     case "$answer" in
         y|Y|yes|YES)
             validate_platform
@@ -415,6 +484,7 @@ show_menu() {
     printf 'Running script fingerprint: %.12s\n' "$installer_fingerprint"
     printf 'Installer file downloaded/modified: %s\n' "$(date -r "${BASH_SOURCE[0]}" '+%Y-%m-%d %H:%M %Z')"
     printf 'Source: github.com/lbr88-labs/chatgpt-steam-deck\n\n'
+    printf 'Currently installed app: %s\nTarget app (signed stable): %s\n\n' "$CURRENT_APP_VERSION" "$TARGET_APP_VERSION"
     printf '  1) Install or update from upstream main (default)\n'
     printf '  2) Install or update from reviewed commit %.12s\n' "$REVIEWED_REF"
     printf '  3) Uninstall\n'
@@ -427,8 +497,18 @@ main() {
     trap cleanup EXIT
     trap 'exit 130' INT TERM
 
-    show_menu
-    read -r choice || choice='4'
+    load_version_summary
+    if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command_exists "$ZENITY_BIN"; then
+        GUI_MODE=1
+        choice="$(choose_gui_action)" || choice=4
+        [[ -n "$choice" ]] || choice=4
+        if [[ "$choice" != 4 ]]; then
+            configure_gui_auth
+        fi
+    else
+        show_menu
+        read -r choice || choice='4'
+    fi
     choice="${choice:-1}"
     case "$choice" in
         1) install_or_update main ;;
@@ -437,6 +517,10 @@ main() {
         4) info 'No changes made.' ;;
         *) die 'Choose 1, 2, 3, or 4.' ;;
     esac
+    if [[ "$GUI_MODE" -eq 1 && "$choice" != 4 ]]; then
+        "$ZENITY_BIN" --info --title='ChatGPT Community Installer' \
+            --text='Operation finished. You can close this window.'
+    fi
 }
 
 if [[ "${INSTALLER_TEST_MODE:-0}" != '1' ]]; then

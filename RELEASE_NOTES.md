@@ -1,5 +1,11 @@
 # Unreleased
 
+- Use clickable Zenity dialogs for the action menu, uninstall confirmation, and
+  completion/error messages on the desktop; retain terminal build output.
+- Route sudo authentication, including upstream scripts, through a graphical
+  password popup using sudo's askpass mechanism.
+- Show installed and target app versions alongside installer identity, with
+  target information checked against signed upstream metadata.
 - Recognize externally installed upstream payloads and clear matching staged
   duplicates instead of repeatedly offering the already-installed app version.
 - Display the installer's own version, release date, file timestamp, and script
