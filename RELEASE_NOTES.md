@@ -1,5 +1,8 @@
 # Unreleased
 
+- Refresh KDE's application-menu cache on installation-method switches and
+  rollback so stale entries do not keep launching a removed native executable.
+  Keep both installation methods in the Development category.
 - Make AppImage the first installation/update choice, built in a reusable
   rootless Distrobox environment and run directly on the host without a runtime
   container or additional sandbox. AppImage updates use this installer.

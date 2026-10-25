@@ -79,6 +79,9 @@ finished AppImage on the host before switching, retains the previous AppImage
 for rollback, and restores the previous app/menu if removing the native package
 fails. It never removes the shared Codex profile or credentials. The app must be
 closed before installation, update, switching, or removal.
+Both methods appear under **Development**. Each switch explicitly rebuilds
+KDE's application-menu cache so it launches the new location, including when
+rolling back a failed switch.
 
 SteamOS upgrades can remove the locally installed `dpkg` package while leaving
 its two empty state files behind. Before reinstalling build dependencies, the

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.6'
+INSTALLER_VERSION='2026.10.25.7'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -175,7 +175,7 @@ choose_gui_action() {
         TRUE 1 "$APPIMAGE_ACTION" \
         FALSE 2 "$NATIVE_ACTION (tested build code)" \
         FALSE 5 "$NATIVE_ACTION (latest build code)" \
-        FALSE 3 'Uninstall the app (keep your profile)' \
+        FALSE 3 "Uninstall — $INSTALLATION_MODE (keep your profile)" \
         --ok-label='Continue' --cancel-label='Close'
 }
 
@@ -460,7 +460,7 @@ install_or_update() {
     remove_appimage_installation
     systemctl --user enable --now codex-update-manager.service || warn 'Could not enable the automatic updater.'
     MODE_COMMITTED=1
-    info "$APP_NAME is installed. Find it in the application launcher under Internet."
+    info "$APP_NAME is installed. Find it in the application launcher under Development."
 }
 
 uninstall_app() {
@@ -468,7 +468,7 @@ uninstall_app() {
     if [[ "$GUI_MODE" -eq 1 ]]; then
         answer=n
         if "$ZENITY_BIN" --question --title='Remove ChatGPT Community?' \
-            --text='Remove the app and its package-managed files? Your profile will be kept.' \
+            --text="Remove ChatGPT Community ($INSTALLATION_MODE)? Its application-menu entry will be updated. Your chats and settings will be kept." \
             --ok-label='Uninstall' --cancel-label='Keep installed'; then
             answer=y
         fi

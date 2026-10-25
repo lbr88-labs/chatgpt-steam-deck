@@ -36,16 +36,31 @@ case "$1" in
 esac
 ''')
         pacman.chmod(0o755)
+        tools = base / "tools"
+        tools.mkdir()
+        refresh = tools / "kbuildsycoca6"
+        refresh.write_text('''#!/bin/sh
+echo refresh >> "$TEST_BASE/menu-refreshes"
+test "${FAIL_MENU_REFRESH:-0}" = 0 || exit 1
+if test -f "$APPIMAGE_DESKTOP_FILE"; then
+    cp "$APPIMAGE_DESKTOP_FILE" "$TEST_BASE/cached-menu"
+else
+    rm -f "$TEST_BASE/cached-menu"
+fi
+''')
+        refresh.chmod(0o755)
         return source, artifact, pacman
 
-    def run_shell(self, base, command, fail=False):
-        env = dict(os.environ, TEST_BASE=str(base), TEST_ROOT=str(ROOT), FAIL_REMOVE="1" if fail else "0")
+    def run_shell(self, base, command, fail=False, fail_menu=False):
+        env = dict(os.environ, TEST_BASE=str(base), TEST_ROOT=str(ROOT),
+                   FAIL_REMOVE="1" if fail else "0", FAIL_MENU_REFRESH="1" if fail_menu else "0",
+                   PATH=str(base / "tools") + os.pathsep + os.environ["PATH"])
         script = r'''
 set -Eeuo pipefail
 export INSTALLER_TEST_MODE=1
 source "$TEST_ROOT/installer.sh"
 APPIMAGE_HOME="$TEST_BASE/installed"
-APPIMAGE_DESKTOP_FILE="$TEST_BASE/applications/codex-desktop.desktop"
+export APPIMAGE_DESKTOP_FILE="$TEST_BASE/applications/codex-desktop.desktop"
 APP_INSTALL_DIR="$TEST_BASE/opt-codex"
 PACMAN_BIN="$TEST_BASE/pacman"
 source "$TEST_ROOT/scripts/appimage-mode.sh"
@@ -71,6 +86,8 @@ publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"
 test ! -f "$TEST_BASE/registered"
 appimage_is_installed
 grep -q 'ChatGPT-Community.AppImage' "$APPIMAGE_DESKTOP_FILE"
+grep -q 'ChatGPT-Community.AppImage' "$TEST_BASE/cached-menu"
+grep -q '^Categories=Development;' "$APPIMAGE_DESKTOP_FILE"
 detect_installation_mode
 test "$INSTALLATION_MODE" = AppImage
 test "$NATIVE_ACTION" = 'Switch to standard installation — removes AppImage'
@@ -79,10 +96,20 @@ touch "$TEST_BASE/registered"
 remove_appimage_installation
 test ! -e "$APPIMAGE_HOME"
 test ! -e "$APPIMAGE_DESKTOP_FILE"
+test ! -e "$TEST_BASE/cached-menu"
 test -f "$TEST_BASE/registered"
 ''')
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((base / "profile").read_text(), "keep chats and settings")
+
+    def test_failed_menu_refresh_preserves_native_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            self.prepare(base)
+            result = self.run_shell(base, r'publish_appimage "$TEST_BASE/source" "$TEST_BASE/candidate.AppImage"', fail_menu=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue((base / "registered").exists())
+            self.assertFalse((base / "removal-attempted").exists())
 
     def test_failed_native_removal_restores_previous_appimage_and_menu(self):
         with tempfile.TemporaryDirectory() as directory:

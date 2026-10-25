@@ -80,6 +80,18 @@ remove_managed_appimage_dir() {
     rm -rf -- "$directory"
 }
 
+refresh_application_menu() {
+    if command_exists update-desktop-database; then
+        update-desktop-database "$(dirname "$APPIMAGE_DESKTOP_FILE")" || warn 'Could not refresh desktop MIME information.'
+    fi
+    # MIME databases do not invalidate KDE's cached executable/category entry.
+    if command_exists kbuildsycoca6; then
+        kbuildsycoca6 --noincremental
+    elif command_exists kbuildsycoca5; then
+        kbuildsycoca5 --noincremental
+    fi
+}
+
 cleanup_installation_mode() {
     if [[ "$APPIMAGE_TRANSACTION" -eq 1 ]]; then
         if [[ "$APPIMAGE_PUBLISHED" -eq 1 ]]; then remove_managed_appimage_dir "$APPIMAGE_HOME" || true; fi
@@ -94,6 +106,7 @@ cleanup_installation_mode() {
             fi
         fi
         APPIMAGE_TRANSACTION=0
+        refresh_application_menu || warn 'Could not refresh the restored application-menu entry.'
     fi
     if [[ -n "$APPIMAGE_CANDIDATE_DIR" && -d "$APPIMAGE_CANDIDATE_DIR" ]]; then
         remove_managed_appimage_dir "$APPIMAGE_CANDIDATE_DIR" || true
@@ -152,7 +165,7 @@ publish_appimage() {
     "$stage/ChatGPT-Community.AppImage" --diagnose
     desktop_stage="$(mktemp --suffix=.desktop "$(dirname "$APPIMAGE_DESKTOP_FILE")/.codex-desktop.XXXXXX")"
     APPIMAGE_DESKTOP_STAGE="$desktop_stage"
-    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/ChatGPT-Community.AppImage" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Network;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
+    printf '[Desktop Entry]\nType=Application\nName=ChatGPT Community\nComment=ChatGPT Community — update using the Steam Deck installer\nExec="%s/ChatGPT-Community.AppImage" %%U\nIcon=%s/icon.png\nTerminal=false\nCategories=Development;\nStartupWMClass=codex-desktop\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;\n' \
         "$APPIMAGE_HOME" "$APPIMAGE_HOME" >"$desktop_stage"
     chmod 644 "$desktop_stage"
     if command_exists desktop-file-validate; then desktop-file-validate "$desktop_stage"; fi
@@ -179,6 +192,8 @@ publish_appimage() {
     mv -T -- "$stage" "$APPIMAGE_HOME"
     APPIMAGE_DESKTOP_PUBLISHED=1
     mv -T -- "$desktop_stage" "$APPIMAGE_DESKTOP_FILE"
+    # Ensure KDE sees the replacement launcher before removing its old target.
+    refresh_application_menu
     if "$PACMAN_BIN" -Qq "$PACKAGE_NAME" >/dev/null 2>&1; then
         ensure_writable_system
         if ! run_root "$PACMAN_BIN" -R --noconfirm "$PACKAGE_NAME"; then
@@ -192,7 +207,7 @@ publish_appimage() {
     APPIMAGE_TRANSACTION=0
     MODE_COMMITTED=1
     ORPHANED_APP_BACKUP=''
-    command_exists update-desktop-database && update-desktop-database "$(dirname "$APPIMAGE_DESKTOP_FILE")" || true
+    refresh_application_menu || warn 'Could not refresh the application menu after switching.'
     info 'AppImage installed. Open ChatGPT Community from the application menu. Run this desktop installer again to update it.'
 }
 
@@ -220,5 +235,5 @@ remove_appimage_installation() {
     if [[ -f "$APPIMAGE_DESKTOP_FILE" ]] && grep -Fq "$APPIMAGE_HOME/ChatGPT-Community.AppImage" "$APPIMAGE_DESKTOP_FILE"; then
         rm -f -- "$APPIMAGE_DESKTOP_FILE"
     fi
-    command_exists update-desktop-database && update-desktop-database "$(dirname "$APPIMAGE_DESKTOP_FILE")" || true
+    refresh_application_menu
 }
