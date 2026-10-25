@@ -1,5 +1,7 @@
 # AppImage follow-up
 
+- [x] Verify SSD-backed build scratch space for SteamOS tmpfs quota failures (errno 122). Full AppImage build completed; deliberate failure confirmed scratch cleanup. Included in installer 2026.10.25.9.
+
 - [x] Reproduce Plasma's permission/not-permitted notification using the actual AppImage launcher.
 - [x] Fix the cause in the installer and add a regression check.
 - [x] Verify actual startup on SteamOS without removing the working native installation or using its profile.

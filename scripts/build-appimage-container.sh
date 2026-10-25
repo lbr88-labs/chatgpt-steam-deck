@@ -7,6 +7,11 @@ set -Eeuo pipefail
     exit 1
 }
 source_dir="$(realpath "$1")"
+# SteamOS /tmp is a quota-limited tmpfs. ASAR repacking needs substantial scratch
+# space, so keep this build's temporary files beside the source on the SSD.
+build_tmp="$(mktemp -d "$(dirname "$source_dir")/.appimage-build-tmp.XXXXXX")"
+export TMPDIR="$build_tmp"
+trap 'rm -rf -- "$build_tmp"' EXIT
 unset SUDO_ASKPASS
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
