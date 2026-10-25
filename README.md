@@ -96,7 +96,10 @@ maintainer scripts, or treat a `latest` URL as a package trust root.
 ## Security notes
 
 - The desktop launcher downloads this repository’s current `installer.sh` over
-  HTTPS when opened.
+  HTTPS when opened. When Git is available, it resolves the latest commit first
+  and downloads that exact revision, including the matching updater integration.
+  This avoids stale copies of the moving branch URL. Without Git it uses the
+  full branch-reference URL with a timestamp parameter.
 - The default option follows upstream `main`, so its source can change between
   runs. Choose the reviewed-commit option for a fixed upstream snapshot.
 - Review the small [desktop launcher](./Install%20ChatGPT%20Community.desktop)
