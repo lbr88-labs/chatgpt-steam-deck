@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME='ChatGPT Community'
-INSTALLER_VERSION='2026.10.25.4'
+INSTALLER_VERSION='2026.10.25.5'
 INSTALLER_RELEASE_DATE='2026-10-25'
 PACKAGE_NAME='codex-desktop'
 UPSTREAM_REPO="${UPSTREAM_REPO:-ilysenko/codex-desktop-linux}"
@@ -149,7 +149,7 @@ configure_gui_auth() {
     real_zenity="$(command -v "$ZENITY_BIN")"
     mkdir -p "$CACHE_HOME"
     GUI_AUTH_DIR="$(mktemp -d "$CACHE_HOME/.gui-auth.XXXXXX")"
-    printf '#!/usr/bin/env bash\nexec %q --password --title="ChatGPT Community — Administrator Password" --text="${1:-Enter your administrator password}"\n' \
+    printf '#!/usr/bin/env bash\nexec %q --password --title="ChatGPT Community — Sudo Password" --text="Enter your sudo password. ChatGPT Community needs administrator permission to install, update, or remove system packages."\n' \
         "$real_zenity" >"$GUI_AUTH_DIR/askpass"
     printf '#!/usr/bin/env bash\nexec %q -A "$@"\n' "$real_sudo" >"$GUI_AUTH_DIR/sudo"
     chmod 700 "$GUI_AUTH_DIR/askpass" "$GUI_AUTH_DIR/sudo"
