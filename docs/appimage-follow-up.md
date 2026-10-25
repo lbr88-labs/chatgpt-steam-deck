@@ -10,9 +10,26 @@
 - [x] Publish the fix and verify the desktop installer's download before asking the user to retry (installer 2026.10.25.8; GitHub main and immutable downloads verified).
 - [x] Explain in the menu that the AppImage is built locally before installation.
 
-Keeping both installations at once was cancelled by the user after successful
-AppImage startup and normal-Quit verification. Retain the existing choice of
-AppImage or standard installation, with switching replacing the previous method.
+The user subsequently requested independent installations after the original
+menu failure recurred. Installer 2026.10.25.11 supports both types with separate
+menu IDs and uninstall actions, and allows one type to run while installing the
+other. It also restores SteamOS read-only mode before the completion dialog,
+avoiding sudo expiry while that dialog waits for the user.
+
+Important verification limit: the earlier permission rejection was reproduced
+on a recreated test shortcut, not the user's removed original launcher. The
+original Plasma menu failure was not conclusively reproduced. Do not equate
+successful isolated tests with verification of the original migration flow.
+Upstream's AppImage desktop hint was also found to reference its temporary,
+non-executable embedded desktop file; the build now patches that hint to the
+permanent installer-generated entry.
+
+- [x] Complete real installer run and verify both installed entries and native package preservation. Ran installer.sh normally, selected option 1, and completed download/build/install without test stubs. Native package version and desktop-file SHA256 were unchanged. The AppImage desktop entry is deck-owned, mode 0755, independently named, and accepted by `kstart --application chatgpt-community-appimage`.
+
+The native app remained running during installation. Since both editions use the
+same user profile, launching the AppImage while native is open can forward to the
+existing session; this launch check verifies the installed shortcut is accepted,
+not that two independent app sessions run simultaneously.
 
 Evidence (October 25): KDE rejected the actual generated launcher with the
 diagnostic "not owned by root and executable flag not set." The launcher was
